@@ -2,6 +2,7 @@ import numpy as np
 import trimesh
 import xml
 import xml.etree.ElementTree as ET
+from Camera import Camera, Sensor
 
 def load_mesh():
     mesh = trimesh.load_mesh('./data/mesh_data/Sapelo_202106_run13/mesh.ply')
@@ -108,38 +109,58 @@ def load_agisoft_cameras():
 
     chunks = root.findall('chunk')
     sensors = {}
+    sensors_alt = {}
     cameras = []
+    cameras_alt = []
 
     for chunk in chunks:
         sensors_this_chunk = chunk.find('sensors')
         for sensor in sensors_this_chunk:
+            sens_alt = Sensor()
+            sens_alt.load_agisoft(sensor, version)
+            sensors_alt[sens_alt.id] = sens_alt
+
             sensor_data = parse_sensor_data(sensor, version)  #open dictionary
             sensors[sensor_data['id']] = sensor_data
 
         cameras_this_chunk = chunk.find('cameras')
         for camera in cameras_this_chunk:
+            cam_alt = Camera()
+            cam_alt.load_agisoft(camera, sensors_alt)
+            cameras_alt.append(cam_alt)
             cameras.append(parse_camera_data(camera, sensors, version))
 
-    return sensors, cameras
+    return sensors, cameras, cameras_alt
 
 
 if __name__ == '__main__':
     mesh = load_mesh()
-    sensors, cameras = load_agisoft_cameras()
+    sensors, cameras, cameras_alt = load_agisoft_cameras()
 
     cam_test = cameras[300]
+    cam_alt_test = cameras_alt[300]
     sensor_test = sensors[cam_test['sensor_id']]
 
     vertices = mesh.vertices.view(np.ndarray)
     hits = []
+    hits_alt =[]
     for vertex in vertices:
         vertex = np.append(vertex, 1.000) #make homogeneous
         vertex = vertex.reshape((4,1))
+
+        valid, x_cam = cam_alt_test.project(vertex)
+        if valid:
+            hits_alt.append({
+                'vertex': vertex,
+                'x': x_cam
+            })
+
         xh = np.matmul(cam_test['P'], vertex)
         if(xh[2] > 0 ):  #point must be in front of camera
             x = [xh[0]/xh[2], xh[1]/xh[2]]
             #is x within image
             if( (0 < x[0] < sensor_test['dim'][0]) and (0 < x[1] < sensor_test['dim'][1])):
+
                 hits.append({
                             'vertex': vertex,
                             'x': x
