@@ -1,7 +1,7 @@
 import numpy as np
 import xml.etree.ElementTree as ET
 
-class Sensor:
+class Camera:
     def __init__(self):
         self.id = []
         self.dim = []
@@ -105,23 +105,22 @@ class Sensor:
         if not p2 is None:
             self.p2 = float(p2.text)
 
-class Camera:
+class Frame:
     def __init__(self):
-        self.camera_id = []
+        self.frame_id = []
         self.label = []
         self.enabled = True
-        self.sensor = []
+        self.camera = []
+        self.camera_id = []
         self.P = []  #projection matrix
         self.Tcw = []  # world to camera transform
         self.Twc = []   #camera to world transform
 
-    def load_agisoft(self, xml_data, sensors):
-
-
-        self.camera_id = xml_data.attrib['id']
+    def load_agisoft(self, xml_data, cameras):
+        self.frame_id = xml_data.attrib['id']
         self.label = xml_data.attrib['label']
-        self.sensor_id = xml_data.attrib['sensor_id']
-        self.sensor = sensors[self.sensor_id]
+        self.camera_id = xml_data.attrib['sensor_id']  #in agisoft terminology a sensor is what's called a camera here
+        self.camera = cameras[self.camera_id]
         self.enabled = xml_data.attrib['enabled']
 
         transform = xml_data.find('transform')
@@ -129,11 +128,11 @@ class Camera:
         self.Twc = np.array(tdata_raw).reshape((4,4))
         self.Tcw = np.linalg.inv(self.Twc)
 
-        self.P = np.matmul(self.sensor.K, self.Tcw[0:3,:])
+        self.P = np.matmul(self.camera.K, self.Tcw[0:3, :])
 
     def project(self, x_world):
         x_cam = np.matmul(self.Tcw, x_world)
-        return self.sensor.project(x_cam)
+        return self.camera.project(x_cam)
 
 
 
