@@ -1,8 +1,8 @@
 import numpy as np
 import trimesh
-import xml
 import xml.etree.ElementTree as ET
-from Frame import Frame, Camera
+from Camera import Frame, Camera
+from aabbtree_mod import AABB, AABBTree
 
 def load_mesh():
     mesh = trimesh.load_mesh('./data/mesh_data/Sapelo_202106_run13/mesh.ply')
@@ -46,17 +46,22 @@ if __name__ == '__main__':
     camera_test = cameras[frame_test.camera_id]
 
     vertices = mesh.vertices.view(np.ndarray)
-    hits = []
-    for vertex in vertices:
-        vertex = np.append(vertex, 1.000) #make homogeneous
-        vertex = vertex.reshape((4,1))
+    faces = mesh.faces.view(np.ndarray)
 
-        valid, x_cam = frame_test.project(vertex)
-        if valid:
-            hits.append({
-                'vertex': vertex,
-                'x': x_cam
-            })
+    face_lb = vertices[faces[:, 0], :]
+    face_ub = vertices[faces[:, 0], :]
+
+    for i in range(2):
+        face_lb = np.minimum(face_lb, vertices[faces[:, i + 1], :])
+        face_ub = np.maximum(face_ub, vertices[faces[:, i + 1], :])
+
+    hits = []
+
+    aabb_init = []
+    for lb,ub in zip(face_lb, face_ub):
+        aabb_init.append(AABB( limits=[(lb[0], ub[0]), (lb[1], ub[1]), (lb[2], ub[2])] ))
+
+    tree = AABBTree(aabbs_init=aabb_init)
     print('done')
 
 
