@@ -82,18 +82,18 @@ def parse_camera_data(camera, version):
 
     return camera_data
 
-def parse_frame_data(frame, sensors, version):
+def parse_frame_data(frame, cameras, version):
     frame_data = {}
-    frame_data['camera_id'] = frame.attrib['id']
+    frame_data['frame_id'] = frame.attrib['id']
     frame_data['label'] = frame.attrib['label']
-    frame_data['sensor_id'] = frame.attrib['sensor_id']
+    frame_data['camera_id'] = frame.attrib['sensor_id']
     frame_data['enabled'] = frame.attrib['enabled']
 
     transform = frame.find('transform')
     tdata_raw = [float(elm) for elm in transform.text.split()]
     frame_data['Twc'] = np.array(tdata_raw).reshape((4,4))   #camera to world transform
     frame_data['Tcw'] = np.linalg.inv(frame_data['Twc'])        # world to camera transform
-    K = sensors[frame_data['sensor_id']]['K']
+    K = cameras[frame_data['camera_id']]['K']
     frame_data['P'] = np.matmul(K, frame_data['Tcw'][0:3,:])  #projection matrix
     return frame_data
     #print('split')
