@@ -1,5 +1,13 @@
 import numpy as np
+import itertools
 import xml.etree.ElementTree as ET
+from collections import deque
+import itertools
+
+
+def all_binary_permutations(n):
+   return [list(map(int, seq)) for seq in itertools.product("01", repeat=n)]
+
 
 class Camera:
     def __init__(self):
@@ -130,9 +138,87 @@ class Frame:
 
         self.P = np.matmul(self.camera.K, self.Tcw[0:3, :])
 
+
+
     def project(self, x_world):
         x_cam = np.matmul(self.Tcw, x_world)
         return self.camera.project(x_cam)
+
+    def project_pinhole(self, x_world):
+        x_img = np.matmul(self.P, x_world)
+        z_pos = x_img[2] > 0
+        x_img = [x_img[0]/x_img[2], x_img[1]/x_img[2]]
+        in_image = (0 < x_img[0] < self.camera.dim[0]) and (0 < x_img[1] < self.camera.dim[1])
+        return in_image, x_img, z_pos
+
+
+    def aabb_is_visible(self, bounds):
+        #bound = list(zip(lb,ub))
+        corners = []
+        for perm in all_binary_permutations(3):
+            corner = [ax[i] for i, ax in zip(perm, bounds)]
+            corner = np.array(corner)
+            corner = np.append(corner, 1.000)
+            corner = corner.reshape((4,1))
+            corners.append(corner)
+
+        w = self.camera.dim[0]
+        h = self.camera.dim[1]
+        x_le_w =[]
+        x_gt_0 = []
+        y_le_h =[]
+        y_gt_0 = []
+        z_pos = []
+        positions = []
+
+        for corner in corners:
+            #valid, pos = self.project(corner)
+            valid, pos, z_valid = self.project_pinhole(corner)
+            x_le_w.append( (pos[0] < w) )
+            x_gt_0.append( (pos[0] > 0) )
+            y_le_h.append( (pos[1] < h) )
+            y_gt_0.append( (pos[1] > 0) )
+            z_pos.append(z_valid)
+
+            positions.append(pos)
+       #     positions2.append(pos2)
+
+        if sum(x_le_w) == 0 or sum(x_gt_0) == 0:
+            return False                            #box must be either entirely to left (sum(x_gt_0) == 0) or right (sum(x_le_w) == 0) of frame viewing area
+        elif sum(y_le_h) == 0 or sum(y_gt_0) == 0:
+            return False                           #box must be entirely above or below viewing area
+        elif sum(z_pos) == 0:
+            return False
+        else:
+            return True
+
+    def project_from_tree(self, tree):
+        #finds primitives in tree potentially visible in frame. returns primitives in leaf nodes of aabbtree for which some portion of box is visible in frame
+        hits = []
+        queue = deque()
+        # probably should double check root.aabb hits before appending
+
+        if self.aabb_is_visible(tree.aabb.limits):
+            queue.append(tree)
+
+        while queue:
+            node = queue.popleft()
+
+            if node.primitives:
+                hits.extend(node.primitives)
+
+            for child in [node.left, node.right]:
+                if child is not None:
+                    if self.aabb_is_visible(child.aabb.limits):
+                        queue.append(child)
+
+        return hits
+
+
+
+
+
+
 
 
 

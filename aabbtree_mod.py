@@ -268,7 +268,7 @@ class AABBTree(object):  # pylint: disable=useless-object-inheritance
         right (AABBTree, optional): The right branch of the tree
 
     """  # NOQA: E501
-    def __init__(self, aabb=AABB(), aabbs_init=None, value=None, left=None, right=None):
+    def __init__(self, aabb=AABB(), aabbs_init=None, value=None, left=None, right=None, node_id=0):
 
         self.aabb = aabb
         self.value = value
@@ -276,6 +276,8 @@ class AABBTree(object):  # pylint: disable=useless-object-inheritance
         self.right = right
         self.parent = None
         self.primitives = None
+        self.node_id = node_id
+        self.node_counter = 0  #incremented by root to provide globally unique ids for all nodes in a tree
 
         if aabbs_init is not None:
             self.construct_init_AABB_engwirda(aabbs_init)
@@ -341,6 +343,46 @@ class AABBTree(object):  # pylint: disable=useless-object-inheritance
             return int(self.aabb != AABB())
         return len(self.left) + len(self.right)
 
+    def from_mesh_faces(self, mesh):
+        vertices = mesh.vertices.view(np.ndarray)
+        faces = mesh.faces.view(np.ndarray)
+
+        face_lb = vertices[faces[:, 0], :]
+        face_ub = vertices[faces[:, 0], :]
+
+        for i in range(2):
+            face_lb = np.minimum(face_lb, vertices[faces[:, i + 1], :])
+            face_ub = np.maximum(face_ub, vertices[faces[:, i + 1], :])
+
+        aabb_init = []
+        for lb, ub in zip(face_lb, face_ub):
+            aabb_init.append(AABB(limits=[(lb[0], ub[0]), (lb[1], ub[1]), (lb[2], ub[2])]))
+
+        return AABBTree(aabbs_init=aabb_init)
+
+    def new_node_id(self):
+        self.node_counter = self.node_counter + 1
+        return self.node_counter
+
+    def count_nodes(self):
+        n_below = 1 #this node
+        for child in [self.left, self.right]:
+            if child is not None:
+                n_below = n_below + child.count_nodes()
+        return n_below
+
+    def collect_primitives(self):
+        data = {}
+        if self.primitives:
+            data = {self.node_id: [self.primitives, [ax for ax in self.aabb]] }
+
+        for child in [self.left, self.right]:
+            if child is not None:
+                data_child = child.collect_primitives()
+                data = {**data, **data_child}
+        return data
+
+
     def construct_init_AABB_engwirda(self, aabbs):
         """construct initial AABB using method of Engwirda in his matlab AABBTree package"""
         opts = {'long': 0.75,  'vtol': 0.55, 'n_primitives': 32}
@@ -351,8 +393,8 @@ class AABBTree(object):  # pylint: disable=useless-object-inheritance
         ub = np.empty((ni, ndims), dtype=float) #upper bounds
         for i, box in enumerate(aabbs):
             for j, ax in enumerate(box):
-                lb[i,j] = ax[0]
-                ub[i,j] = ax[1]
+                lb[i, j] = ax[0]
+                ub[i, j] = ax[1]
     #    lbi_raw = [True]*ndims
     #    lbi_raw.extend([False]*ndims)
     #    lbi = np.array(lbi_raw, dtype= bool)  #index for lowerbounds
@@ -363,7 +405,7 @@ class AABBTree(object):  # pylint: disable=useless-object-inheritance
         lb = lb - rd * np.finfo(float).eps
         ub = ub + rd * np.finfo(float).eps
 
-        rc = (lb + ub)/2
+        rc = (lb + ub)/2  #centers
         rd = ub - lb #recompute after inflation
 
         lb_root = np.amin(lb, axis=0)
@@ -381,25 +423,27 @@ class AABBTree(object):  # pylint: disable=useless-object-inheritance
             #determine axis to split along and primitives to reassign
             dd = node.aabb.distances()
             id_order = np.argsort(dd)
+            lp = []  #primitives to stay with parent
+            ls = []  #primitives to be allocated to children (if node is split)
             for ax in id_order[::-1]:
                 mx = dd[ax]
                 il = rd[node.primitives, ax] > opts['long'] * mx
-                lp = node.primitives[il]  #'long' rectangles
-                ls = node.primitives[~il] #'short' rectangles
+                lp = [i for i, b in zip(node.primitives, il) if b]  #'long' rectangles
+                ls = [i for i, b in zip(node.primitives, il) if ~b]#node.primitives[~il] #'short' rectangles
 
                 if (len(lp) < 0.5*len(ls)) and (len(lp) < opts['n_primitives']):
                     break
 
-            if(~ls):
+            if not ls:
                 continue
 
             #determine split location
             sp = np.mean(rc[ls,ax])
             i2 = rc[ls,ax] > sp
-            primitives_c1 = ls(~i2)
-            primitives_c2 = ls(i2)
+            primitives_c1 = [i for i, b in zip(ls, i2) if ~b]
+            primitives_c2 = [i for i, b in zip(ls, i2) if b] #ls(i2)
 
-            if(~primitives_c1 or ~primitives_c2):
+            if not primitives_c1 or not primitives_c2:
                 continue #partition is done
 
             lb_c1 = np.amin(lb[primitives_c1, :], axis=0)
@@ -409,32 +453,30 @@ class AABBTree(object):  # pylint: disable=useless-object-inheritance
             aabb_c1 = AABB(limits=[(lb_c1[0], ub_c1[0]), (lb_c1[1], ub_c1[1]), (lb_c1[2], ub_c1[2])])
             aabb_c2 = AABB(limits=[(lb_c2[0], ub_c2[0]), (lb_c2[1], ub_c2[1]), (lb_c2[2], ub_c2[2])])
 
-
-
             if len(node.primitives) < opts['n_primitives']:  #may still want to split further
                 vp = np.prod(node.aabb.distances())  #volume of parent
                 vc1 = np.prod(aabb_c1.distances())  # volume of child 1
                 vc2 = np.prod(aabb_c2.distances())  # volume of child 2
 
                 if (vc1+vc2) < opts['vtol']*vp:   #splitting is productive, continue
-                    node.left = AABBTree(aabb=aabb_c1)
+                    node.primitives = lp
+                    node.left = AABBTree(aabb=aabb_c1, node_id=self.new_node_id())
                     node.left.primitives = primitives_c1
-                    node.right = AABBTree(aabb=aabb_c2)
+                    node.right = AABBTree(aabb=aabb_c2, node_id=self.new_node_id())
                     node.right.primitives = primitives_c2
                     stack.append(node.left)
                     stack.append(node.right)
             else:
-                node.left = AABBTree(aabb=aabb_c1)
+                node.primitives = lp
+                node.left = AABBTree(aabb=aabb_c1, node_id=self.new_node_id())
                 node.left.primitives = primitives_c1
-                node.right = AABBTree(aabb=aabb_c2)
+                node.right = AABBTree(aabb=aabb_c2, node_id=self.new_node_id())
                 node.right.primitives = primitives_c2
                 stack.append(node.left)
                 stack.append(node.right)
 
-            print('hello')
 
-
-        print('done')
+       # print('done')
 
 
 
@@ -453,114 +495,114 @@ class AABBTree(object):  # pylint: disable=useless-object-inheritance
             return 0
         return 1 + max(self.left.depth, self.right.depth)
 
-    def add(self, aabb, value=None, method='volume'):
-        r"""Add node to tree
-
-        This function inserts a node into the AABB tree.
-        The function chooses one of three options for adding the node to
-        the tree:
-
-            * Add it to the left side
-            * Add it to the right side
-            * Become a leaf node
-
-        The cost of each option is calculated based on the *method* keyword,
-        and the option with the lowest cost is chosen.
-
-        Args:
-            aabb (AABB): The AABB to add.
-            value: The value associated with the AABB. Defaults to None.
-            method (str): The method for deciding how to build the tree.
-                Should be one of the following:
-
-                    * volume
-
-                **volume**
-                *Costs based on total bounding volume and overlap volume*
-
-                Let :math:`p` denote the parent, :math:`l` denote the left
-                child, :math:`r` denote the right child, :math:`x` denote
-                the AABB to add, and :math:`V` be the volume of an AABB.
-                The three options to add :math:`x` to the left branch, add it
-                to the right branch, or create a new parent.
-                The cost associated with each of these options is:
-
-                .. math::
-
-                    C(\text{add left})      &= V(p \cup x) - V(p) +
-                                               V(l \cup x) - V(l) +
-                                               V((l \cup x) \cap r) \\
-                    C(\text{add right})     &= V(p \cup x) - V(p) +
-                                               V(r \cup x) - V(r) +
-                                               V((r \cup x) \cap l) \\
-                    C(\text{create parent}) &= V(p \cup x) + V(p \cap x)
-
-                In the add-left cost, the term :math:`V(b \cup x) - V(b)` is
-                the increase in parent bounding volume. The cost
-                :math:`V(l \cup x) - V(l)` is the increase in left child
-                bounding volume. The last term, :math:`V((l \cup x) \cap r)`
-                is the overlapping volume between children if :math:`x` were
-                added to the left child.
-                The cost to create a new parent is the bounding volume of the
-                parent and :math:`x` plus their overlap volume.
-
-                This cost function includes the increases in bounding volumes
-                and the amount of overlap- two values a balanced AABB tree
-                should minimize. The cost function suits the author's current
-                needs, though other applications may seek different tree
-                properties. Please visit the `AABBTree repository`_ if
-                interested in implementing another cost function.
-
-        .. _`AABBTree repository`: https://github.com/kip-hart/AABBTree
-
-        """  # NOQA: E501
-        if self.aabb == AABB():
-            self.aabb = aabb
-            self.value = value
-
-        elif self.is_leaf:
-            self.left = AABBTree(self.aabb, value=self.value, left=self.left, right=self.right)
-            self.right = AABBTree(aabb, value)
-
-            self.aabb = AABB.merge(self.aabb, aabb)
-            self.value = None
-        else:
-            if method == 'volume':
-                # Define merged AABBs
-                branch_merge = AABB.merge(self.aabb, aabb)
-                left_merge = AABB.merge(self.left.aabb, aabb)
-                right_merge = AABB.merge(self.right.aabb, aabb)
-
-                # Calculate the change in the sum of the bounding volumes
-                branch_cost = branch_merge.volume
-
-                left_cost = branch_merge.volume - self.aabb.volume
-                left_cost += left_merge.volume - self.left.aabb.volume
-
-                right_cost = branch_merge.volume - self.aabb.volume
-                right_cost += right_merge.volume - self.right.aabb.volume
-
-                # Calculate amount of overlap
-                branch_olap_cost = self.aabb.overlap_volume(aabb)
-                left_olap_cost = left_merge.overlap_volume(self.right.aabb)
-                right_olap_cost = right_merge.overlap_volume(self.left.aabb)
-
-                # Calculate total cost
-                branch_cost += branch_olap_cost
-                left_cost += left_olap_cost
-                right_cost += right_olap_cost
-            else:
-                raise ValueError('Unrecognized method: ' + str(method))
-
-            if branch_cost < left_cost and branch_cost < right_cost:
-                self.left = AABBTree(self.aabb, value=self.value, left=self.left, right=self.right)
-                self.right = AABBTree(aabb, value)
-                self.value = None
-            elif left_cost < right_cost:
-                self.left.add(aabb, value)
-            else:
-                self.right.add(aabb, value)
-            self.aabb = AABB.merge(self.left.aabb, self.right.aabb)
+    # def add(self, aabb, value=None, method='volume'):
+    #     r"""Add node to tree
+    #
+    #     This function inserts a node into the AABB tree.
+    #     The function chooses one of three options for adding the node to
+    #     the tree:
+    #
+    #         * Add it to the left side
+    #         * Add it to the right side
+    #         * Become a leaf node
+    #
+    #     The cost of each option is calculated based on the *method* keyword,
+    #     and the option with the lowest cost is chosen.
+    #
+    #     Args:
+    #         aabb (AABB): The AABB to add.
+    #         value: The value associated with the AABB. Defaults to None.
+    #         method (str): The method for deciding how to build the tree.
+    #             Should be one of the following:
+    #
+    #                 * volume
+    #
+    #             **volume**
+    #             *Costs based on total bounding volume and overlap volume*
+    #
+    #             Let :math:`p` denote the parent, :math:`l` denote the left
+    #             child, :math:`r` denote the right child, :math:`x` denote
+    #             the AABB to add, and :math:`V` be the volume of an AABB.
+    #             The three options to add :math:`x` to the left branch, add it
+    #             to the right branch, or create a new parent.
+    #             The cost associated with each of these options is:
+    #
+    #             .. math::
+    #
+    #                 C(\text{add left})      &= V(p \cup x) - V(p) +
+    #                                            V(l \cup x) - V(l) +
+    #                                            V((l \cup x) \cap r) \\
+    #                 C(\text{add right})     &= V(p \cup x) - V(p) +
+    #                                            V(r \cup x) - V(r) +
+    #                                            V((r \cup x) \cap l) \\
+    #                 C(\text{create parent}) &= V(p \cup x) + V(p \cap x)
+    #
+    #             In the add-left cost, the term :math:`V(b \cup x) - V(b)` is
+    #             the increase in parent bounding volume. The cost
+    #             :math:`V(l \cup x) - V(l)` is the increase in left child
+    #             bounding volume. The last term, :math:`V((l \cup x) \cap r)`
+    #             is the overlapping volume between children if :math:`x` were
+    #             added to the left child.
+    #             The cost to create a new parent is the bounding volume of the
+    #             parent and :math:`x` plus their overlap volume.
+    #
+    #             This cost function includes the increases in bounding volumes
+    #             and the amount of overlap- two values a balanced AABB tree
+    #             should minimize. The cost function suits the author's current
+    #             needs, though other applications may seek different tree
+    #             properties. Please visit the `AABBTree repository`_ if
+    #             interested in implementing another cost function.
+    #
+    #     .. _`AABBTree repository`: https://github.com/kip-hart/AABBTree
+    #
+    #     """  # NOQA: E501
+    #     if self.aabb == AABB():
+    #         self.aabb = aabb
+    #         self.value = value
+    #
+    #     elif self.is_leaf:
+    #         self.left = AABBTree(self.aabb, value=self.value, left=self.left, right=self.right)
+    #         self.right = AABBTree(aabb, value)
+    #
+    #         self.aabb = AABB.merge(self.aabb, aabb)
+    #         self.value = None
+    #     else:
+    #         if method == 'volume':
+    #             # Define merged AABBs
+    #             branch_merge = AABB.merge(self.aabb, aabb)
+    #             left_merge = AABB.merge(self.left.aabb, aabb)
+    #             right_merge = AABB.merge(self.right.aabb, aabb)
+    #
+    #             # Calculate the change in the sum of the bounding volumes
+    #             branch_cost = branch_merge.volume
+    #
+    #             left_cost = branch_merge.volume - self.aabb.volume
+    #             left_cost += left_merge.volume - self.left.aabb.volume
+    #
+    #             right_cost = branch_merge.volume - self.aabb.volume
+    #             right_cost += right_merge.volume - self.right.aabb.volume
+    #
+    #             # Calculate amount of overlap
+    #             branch_olap_cost = self.aabb.overlap_volume(aabb)
+    #             left_olap_cost = left_merge.overlap_volume(self.right.aabb)
+    #             right_olap_cost = right_merge.overlap_volume(self.left.aabb)
+    #
+    #             # Calculate total cost
+    #             branch_cost += branch_olap_cost
+    #             left_cost += left_olap_cost
+    #             right_cost += right_olap_cost
+    #         else:
+    #             raise ValueError('Unrecognized method: ' + str(method))
+    #
+    #         if branch_cost < left_cost and branch_cost < right_cost:
+    #             self.left = AABBTree(self.aabb, value=self.value, left=self.left, right=self.right)
+    #             self.right = AABBTree(aabb, value)
+    #             self.value = None
+    #         elif left_cost < right_cost:
+    #             self.left.add(aabb, value)
+    #         else:
+    #             self.right.add(aabb, value)
+    #         self.aabb = AABB.merge(self.left.aabb, self.right.aabb)
 
     def does_overlap(self, aabb, method='DFS', closed=False):
         """Check for overlap
