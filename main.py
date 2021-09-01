@@ -92,51 +92,58 @@ if __name__ == '__main__':
 
     cameras, frames = load_agisoft_data()
 
-    frame_test = frames[100]
-    camera_test = cameras[frame_test.camera_id]
-    hits, aabbs = frame_test.project_from_tree(tree, descend=4)
-    hits_refined = {}
-    for hit in hits:
-        vertex_ids = faces[hit,:]
-        face_vertices = vertices[vertex_ids, :]
-        valid, pos = frame_test.project_triface(face_vertices)
-        if valid:
-            hits_refined[hit] = pos
+    frames_selection = frames[70:90]
+    for frame in frames_selection:
+        print('working on {}, id: {}'.format(frame.label, frame.frame_id))
+        camera_test = cameras[frame.camera_id]
+        hits, aabbs = frame.project_from_tree(tree, descend=4)
+        hits_refined = {}
+        for hit in hits:
+            vertex_ids = faces[hit,:]
+            face_vertices = vertices[vertex_ids, :]
+            valid, pos = frame.project_triface(face_vertices)
+            if valid:
+                hits_refined[hit] = pos
 
-    hits_idx = list(hits_refined.keys())
-    mesh.visual.face_colors[hits_idx] = np.array([255, 0, 0, 125], dtype=np.uint8)
+        hits_idx = list(hits_refined.keys())
+        mesh.visual.face_colors[hits_idx] = np.array([255, 0, 0, 125], dtype=np.uint8)
 
-    img_pred_path = image_folder + frame_test.label + "_pred.png"
-    img_pred = cv2.imread(img_pred_path)
-    img_pred = cv2.cvtColor(img_pred, cv2.COLOR_BGR2RGB)
+        img_pred_path = image_folder + frame.label + "_pred.png"
+        img_pred = cv2.imread(img_pred_path)
+        img_pred = cv2.cvtColor(img_pred, cv2.COLOR_BGR2RGB)
 
-    for face in hits_refined:
+        cover = {}
+        for face in hits_refined:
 
-        #select only the portion of image viewed in this face
-        tri = hits_refined[face]
-        tri.append(tri[0])
-        tri = np.array(tri, dtype=int)
-      #  tri = np.array([tri, tri[0]]) #close triangle
-        mask = np.zeros((img_pred.shape[0], img_pred.shape[1]))
-        cv2.fillConvexPoly(mask, tri, 1)
-        mask = mask.astype(np.bool)
-        selection = np.zeros_like(img_pred)
-        selection[mask] = img_pred[mask]
+            #select only the portion of image viewed in this face
+            tri = hits_refined[face]
+            tri.append(tri[0])
+            tri = np.array(tri, dtype=int)
+          #  tri = np.array([tri, tri[0]]) #close triangle
+            mask = np.zeros((img_pred.shape[0], img_pred.shape[1]))
+            cv2.fillConvexPoly(mask, tri, 1)
+            mask = mask.astype(np.bool)
+            selection = np.zeros_like(img_pred)
+            selection[mask] = img_pred[mask]
 
-        #crop for faster processing
-        xy_min = np.amin(tri,axis=0)
-        xy_max = np.amax(tri,axis=0)
-        selection_crop = selection[xy_min[1]:xy_max[1], xy_min[0]:xy_max[0]]
+            #crop for faster processing
+            xy_min = np.amin(tri,axis=0)
+            xy_max = np.amax(tri,axis=0)
+            selection_crop = selection[xy_min[1]:xy_max[1], xy_min[0]:xy_max[0]]
 
-    #    cv2.imshow('masked_img', cv2.cvtColor(selection_crop, cv2.COLOR_RGB2BGR))
-    #    cv2.waitKey(0)
+        #    cv2.imshow('masked_img', cv2.cvtColor(selection_crop, cv2.COLOR_RGB2BGR))
+        #    cv2.waitKey(0)
 
-        #decode labels to calculate percent cover
-        class_data = maskrgb_to_class(selection_crop)
-        fc = fractional_cover_from_selection(class_data)
-        print('ehllo')
+            #decode labels to calculate percent cover
+            class_data = maskrgb_to_class(selection_crop)
+            fc = fractional_cover_from_selection(class_data)
+            cover[face] = fc
+            #print('ehllo')
 
+        for face in cover:
+            mesh.visual.face_colors[face] = np.array([0, int(255*cover[face][4]), 0, 255], dtype = np.uint8)
 
+    mesh.show()
 
     # frame_test2 = frames[103]
     # hits2, aabbs2 = frame_test2.project_from_tree(tree, descend=4)
