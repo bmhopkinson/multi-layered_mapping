@@ -50,9 +50,9 @@ class Camera:
 
         in_image = (0 < x < self.dim[0]) and (0 < y <  self.dim[1])
         if(in_image and in_image_pinhole):
-            return True, [x,y]
+            return True, np.append(x,y)
         else:
-            return False, [x,y]
+            return False, np.append(x,y)
 
     def load_agisoft(self, xml_data, version):
 
@@ -141,13 +141,20 @@ class Frame:
 
 
     def project(self, x_world):
+        if x_world.shape != (4,1):
+            x_world = np.append(x_world, 1.000)  # make homogeneous
+            x_world = x_world.reshape((4, 1))
         x_cam = np.matmul(self.Tcw, x_world)
         return self.camera.project(x_cam)
 
     def project_pinhole(self, x_world):
+        if x_world.shape != (4,1):
+            x_world = np.append(x_world, 1.000)  # make homogeneous
+            x_world = x_world.reshape((4, 1))
+
         x_img = np.matmul(self.P, x_world)
         z_pos = x_img[2] > 0
-        x_img = [x_img[0]/x_img[2], x_img[1]/x_img[2]]
+        x_img = np.array([x_img[0]/x_img[2], x_img[1]/x_img[2]])
         in_image = (0 < x_img[0] < self.camera.dim[0]) and (0 < x_img[1] < self.camera.dim[1])
         return in_image, x_img, z_pos
 
@@ -158,8 +165,8 @@ class Frame:
         for perm in all_binary_permutations(3):
             corner = [ax[i] for i, ax in zip(perm, bounds)]
             corner = np.array(corner)
-            corner = np.append(corner, 1.000)
-            corner = corner.reshape((4,1))
+         #   corner = np.append(corner, 1.000)
+         #   corner = corner.reshape((4,1))
             corners.append(corner)
 
         w = self.camera.dim[0]
@@ -223,6 +230,21 @@ class Frame:
                         queue.append(child)
 
         return hits, aabbs
+
+    def project_triface(self, face_vertices):  #projects a triangular face into an image
+        valid = []
+        pos = []
+        for vertex in face_vertices:
+            val, xy = self.project(vertex)
+            valid.append(val)
+            pos.append(xy)
+
+        if(sum(valid) ==3):
+            return True, pos
+        else:
+            return False, pos
+
+
 
 
 

@@ -1,19 +1,33 @@
 import numpy as np
+import cv2
 import trimesh
 import xml.etree.ElementTree as ET
 from Camera import Frame, Camera
 from aabbtree_mod import AABB, AABBTree
 import json
 
-mesh_file = './data/mesh_data/Sapelo_202106_run13/mesh.ply'
-camera_file = './data/mesh_data/Sapelo_202106_run13/agisoft_cameras_Imaging.xml'
+mesh_file = './data/Sapelo_202106_run13/mesh.ply'
+camera_file = './data/Sapelo_202106_run13/agisoft_cameras_Imaging.xml'
+image_folder = './data/Sapelo_202106_run13/imaging_preds_3by2/'
+
+n_classes =9
+class_map = {  # RGB to Class
+    (0, 0, 0): -1,  # out of bounds
+    (255, 255, 255): 0,  # background
+    (150, 255, 14): 0,  # Background_alt
+    (127, 255, 140): 1,  # Spartina
+    (113, 255, 221): 2,  # dead Spartina
+    (99, 187, 255): 3,  # Sarcocornia
+    (101, 85, 255): 4,  # Batis
+    (212, 70, 255): 5,  # Juncus
+    (255, 56, 169): 6,  # Borrichia
+    (255, 63, 42): 7,  # Limonium
+    (255, 202, 28): 8  # Other
+}
 
 def load_mesh():
     mesh = trimesh.load_mesh(mesh_file)
     return mesh
-
-    #TODO: load Agisoft cameras, figure out AABB, start projecting
-
 
 def load_agisoft_data():
     tree = ET.parse(camera_file)
@@ -41,6 +55,30 @@ def load_agisoft_data():
 
     return cameras, frames
 
+def maskrgb_to_class(mask):
+    h, w, channels = mask.shape[0], mask.shape[1], mask.shape[2]
+    mask_out = -1*np.ones((h, w), dtype=int)
+
+    for k in class_map:
+        matches = np.zeros((h, w ,channels), dtype=bool)
+
+        for c in range(channels):
+           matches[:,:,c] = mask[:,:,c] == k[c]
+
+        matches_total = np.sum(matches, axis=2)
+        valid_idx = matches_total == channels
+        mask_out[valid_idx] = class_map[k]
+
+    return mask_out
+
+def fractional_cover_from_selection(class_data):
+    pixel_count = []
+    for i in range(n_classes):
+        t = np.sum(class_data == i)
+        pixel_count.append(t)
+
+    return pixel_count/np.sum(pixel_count)
+
 
 
 if __name__ == '__main__':
@@ -49,68 +87,72 @@ if __name__ == '__main__':
     vertices = mesh.vertices.view(np.ndarray)
     faces = mesh.faces.view(np.ndarray)
 
+    tree = AABBTree()
+    tree = tree.from_mesh_faces(mesh)
+
     cameras, frames = load_agisoft_data()
 
     frame_test = frames[100]
     camera_test = cameras[frame_test.camera_id]
-    # bounds = [[0, 0.1],
-    #            [2, 2.2],
-    #             [7.5, 7.6]]
-    #
-    # frame_test.aabb_is_visible(bounds)
-
-    tree = AABBTree()
-    tree = tree.from_mesh_faces(mesh)
-
     hits, aabbs = frame_test.project_from_tree(tree, descend=4)
-    vertex_ids = []
+    hits_refined = {}
     for hit in hits:
-        vertex_ids.extend(faces[hit,:].tolist())
-    vertex_ids = set(vertex_ids)  #retain unique vertex ids
-
-    vertex_hits_refined =[]
-    for id in vertex_ids:
-        vertex = vertices[id,:]
-        vertex = np.append(vertex, 1.000)  # make homogeneous
-        vertex = vertex.reshape((4, 1))
-
-        valid, x_cam = frame_test.project(vertex)
+        vertex_ids = faces[hit,:]
+        face_vertices = vertices[vertex_ids, :]
+        valid, pos = frame_test.project_triface(face_vertices)
         if valid:
-            vertex_hits_refined.append({
-                'vertex': vertex,
-                'x': x_cam
-            })
+            hits_refined[hit] = pos
 
-    mesh.visual.face_colors[hits] = np.array([255, 0, 0, 125], dtype = np.uint8)
-    mesh.show()
-    #
-    vertex_hits_alt = []
-    for vertex in vertices:
-        vertex = np.append(vertex, 1.000)  # make homogeneous
-        vertex = vertex.reshape((4, 1))
+    hits_idx = list(hits_refined.keys())
+    mesh.visual.face_colors[hits_idx] = np.array([255, 0, 0, 125], dtype=np.uint8)
 
-        valid, x_cam = frame_test.project(vertex)
-        if valid:
-            vertex_hits_alt.append({
-                'vertex': vertex,
-                'x': x_cam
-            })
+    img_pred_path = image_folder + frame_test.label + "_pred.png"
+    img_pred = cv2.imread(img_pred_path)
+    img_pred = cv2.cvtColor(img_pred, cv2.COLOR_BGR2RGB)
 
+    for face in hits_refined:
+
+        #select only the portion of image viewed in this face
+        tri = hits_refined[face]
+        tri.append(tri[0])
+        tri = np.array(tri, dtype=int)
+      #  tri = np.array([tri, tri[0]]) #close triangle
+        mask = np.zeros((img_pred.shape[0], img_pred.shape[1]))
+        cv2.fillConvexPoly(mask, tri, 1)
+        mask = mask.astype(np.bool)
+        selection = np.zeros_like(img_pred)
+        selection[mask] = img_pred[mask]
+
+        #crop for faster processing
+        xy_min = np.amin(tri,axis=0)
+        xy_max = np.amax(tri,axis=0)
+        selection_crop = selection[xy_min[1]:xy_max[1], xy_min[0]:xy_max[0]]
+
+    #    cv2.imshow('masked_img', cv2.cvtColor(selection_crop, cv2.COLOR_RGB2BGR))
+    #    cv2.waitKey(0)
+
+        #decode labels to calculate percent cover
+        class_data = maskrgb_to_class(selection_crop)
+        fc = fractional_cover_from_selection(class_data)
+        print('ehllo')
+
+
+
+    # frame_test2 = frames[103]
+    # hits2, aabbs2 = frame_test2.project_from_tree(tree, descend=4)
+    # hits_refined2 = {}
+    # for hit in hits2:
+    #     vertex_ids = faces[hit,:]
+    #     face_vertices = vertices[vertex_ids, :]
+    #     valid, pos = frame_test2.project_triface(face_vertices)
+    #     if valid:
+    #         hits_refined2[hit] = pos
     #
-    # mesh_wbbs = mesh
-    # for bbox in aabbs:
-    #     center = bbox.center()
-    #     extents = bbox.distances
-    #     box = trimesh.primitives.Box(
-    #                      center=[0, 0, 0],
-    #                      extents=[1, 1, 1])
-    #     mesh_wbbs = mesh_wbbs + box
+    # hits_idx2 = list(hits_refined2.keys())
     #
-    # mesh_wbbs.show()
-    #
-    #
-    # combo = mesh + box
-    # combo.show()
+    # mesh.visual.face_colors[hits_idx2] = np.array([0, 255, 0, 125], dtype = np.uint8)
+    # mesh.show()
+
     print('done')
 
 
