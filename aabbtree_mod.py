@@ -90,6 +90,13 @@ class AABB(object):  # pylint: disable=useless-object-inheritance
 
         return dists
 
+    def center(self):
+        center = []
+        for lims in self.limits:
+            center.append(sum(lims)/2)
+
+        return center
+
 
     @classmethod
     def merge(cls, aabb1, aabb2):

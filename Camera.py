@@ -170,49 +170,59 @@ class Frame:
         y_gt_0 = []
         z_pos = []
         positions = []
-
+        positions2 = []
         for corner in corners:
-            #valid, pos = self.project(corner)
-            valid, pos, z_valid = self.project_pinhole(corner)
-            x_le_w.append( (pos[0] < w) )
-            x_gt_0.append( (pos[0] > 0) )
-            y_le_h.append( (pos[1] < h) )
-            y_gt_0.append( (pos[1] > 0) )
+            valid2, pos2 = self.project(corner)
+            valid, pos, z_valid = self.project_pinhole(corner)  #this seems safer but will not be valid for highly non-linear cameras
+            if z_valid:  #this is critical, if ignored projected image locations are wacky b/c a negative z can make points outside of image magically project in
+                x_le_w.append( (pos[0] < w) )
+                x_gt_0.append( (pos[0] > 0) )
+                y_le_h.append( (pos[1] < h) )
+                y_gt_0.append( (pos[1] > 0) )
             z_pos.append(z_valid)
 
             positions.append(pos)
-       #     positions2.append(pos2)
+            positions2.append(pos2)
 
         if sum(x_le_w) == 0 or sum(x_gt_0) == 0:
             return False                            #box must be either entirely to left (sum(x_gt_0) == 0) or right (sum(x_le_w) == 0) of frame viewing area
         elif sum(y_le_h) == 0 or sum(y_gt_0) == 0:
             return False                           #box must be entirely above or below viewing area
-        elif sum(z_pos) == 0:
-            return False
         else:
             return True
 
-    def project_from_tree(self, tree):
+    def project_from_tree(self, tree, descend=0):
         #finds primitives in tree potentially visible in frame. returns primitives in leaf nodes of aabbtree for which some portion of box is visible in frame
+        #allow descent into the tree because i've found the frame transformation matrices from hyslam are perfectly fine locally but can have issues with global projection
+        # resulting in errors - make the process more local by descending into the tree
         hits = []
+        aabbs = []
         queue = deque()
-        # probably should double check root.aabb hits before appending
 
-        if self.aabb_is_visible(tree.aabb.limits):
-            queue.append(tree)
+        starting_nodes = [tree]
+        for i in range(descend):  #if desired, descend into tree and start at lower level
+            next_nodes = []
+            for node in starting_nodes:
+                next_nodes.extend([node.left, node.right])
+            starting_nodes = next_nodes
 
-        while queue:
+        for node in starting_nodes:  #only append nodes that are visible to queue
+            if self.aabb_is_visible(node.aabb.limits):
+                queue.append(node)
+
+        while queue:   #work until queue is empty to identify aabbs that hold potentially visible primitives
             node = queue.popleft()
 
             if node.primitives:
                 hits.extend(node.primitives)
+                aabbs.append(node.aabb)
 
             for child in [node.left, node.right]:
                 if child is not None:
                     if self.aabb_is_visible(child.aabb.limits):
                         queue.append(child)
 
-        return hits
+        return hits, aabbs
 
 
 
