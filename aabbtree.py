@@ -6,7 +6,8 @@ import numpy as np
 __all__ = ['AABB', 'AABBTree']
 __author__ = 'Kenneth (Kip) Hart'
 
-#modified by B. Hopkinson
+#modified by B. Hopkinson to use Engwirda's method for constructing tree: https://github.com/dengwirda/aabb-tree
+#in fact that's about the only component of the classes i'm currently using
 
 
 class AABB(object):  # pylint: disable=useless-object-inheritance

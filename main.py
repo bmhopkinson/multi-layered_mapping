@@ -7,6 +7,9 @@ from MeshLabeler import MeshLabeler
 from aabbtree_mod import AABB, AABBTree
 import json
 
+""" script to label marsh mesh from images - uses semantically segmented images for class (plant) labeling and raw
+     images for coloring mesh for visualizations """
+
 mesh_file = './data/Sapelo_202106_run15/mesh_fine.ply'
 camera_file = './data/Sapelo_202106_run15/agisoft_cameras_Imaging.xml'
 image_folder = './data/Sapelo_202106_run15/imaging_preds_3by2/'

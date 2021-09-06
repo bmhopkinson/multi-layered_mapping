@@ -10,21 +10,24 @@ def all_binary_permutations(n):
 
 
 class Camera:
+"""represents a projective camera using "OpenCV model", radial and tangential distortion """
     def __init__(self):
-        self.id = []
-        self.dim = []
-        self.K = []
-        self.fx = []
+        self.id = []  
+        self.dim = [] 	 #image dimensions
+        self.K = []		# calibration matrix
+        self.fx = []  	# focal lengths - x and y directions, pixels
         self.fy = []
-        self.cx = []
+        self.cx = []	# camera projection center - pixels
         self.cy = []
-        self.k1 = 0.000
+        self.k1 = 0.000   #radial distortion coeffs
         self.k2 = 0.000
         self.k3 = 0.000
-        self.p1 = 0.000
+        self.p1 = 0.000  # tangential distortion coeffs
         self.p2 = 0.000
 
     def project(self, x_cam):
+    	""" projects a homogenous point in camera coordinates into the camera image
+    	    returns a boolean indicating whether the point projected into the image and the image coordinates (regardless of whether the point is in the image)"""
         #pinhole projection for sanity check
         x_pinhole = np.matmul(self.K, x_cam[0:3,:])
         x_pinhole = np.array([x_pinhole[0]/x_pinhole[2], x_pinhole[1]/x_pinhole[2]])
@@ -55,6 +58,7 @@ class Camera:
             return False, np.append(x,y)
 
     def load_agisoft(self, xml_data, version):
+    """" load camera parameters from xml in agisoft format """
 
         self.id = xml_data.attrib['id']
 
@@ -114,17 +118,21 @@ class Camera:
             self.p2 = float(p2.text)
 
 class Frame:
+""" represents a image and its pose in world coordinates"""
+
     def __init__(self):
         self.frame_id = []
         self.label = []
         self.enabled = True
-        self.camera = []
+        self.camera = []  # camera that acquired the image
         self.camera_id = []
         self.P = []  #projection matrix
         self.Tcw = []  # world to camera transform
         self.Twc = []   #camera to world transform
 
     def load_agisoft(self, xml_data, cameras):
+     """ load frame data from xml file in agisoft format """
+     
         self.frame_id = xml_data.attrib['id']
         self.label = xml_data.attrib['label']
         self.camera_id = xml_data.attrib['sensor_id']  #in agisoft terminology a sensor is what's called a camera here
@@ -141,6 +149,10 @@ class Frame:
 
 
     def project(self, x_world):
+    """ project point in world coordinates into image. 
+    	the point will be converted to homogenous coordinates if it's not already; cooperates with camera
+    	returns a boolean indicating whether the point projected into the image and the image coordinates (regardless of whether the point is in the image)"""
+    	
         if x_world.shape != (4,1):
             x_world = np.append(x_world, 1.000)  # make homogeneous
             x_world = x_world.reshape((4, 1))
@@ -148,6 +160,9 @@ class Frame:
         return self.camera.project(x_cam)
 
     def project_pinhole(self, x_world):
+    """ project point in world coordinates into image using pinhole camera model
+        returns a boolean indicating whether the point projected into the image and the image coordinates (regardless of whether the point is in the image)"""
+    	
         if x_world.shape != (4,1):
             x_world = np.append(x_world, 1.000)  # make homogeneous
             x_world = x_world.reshape((4, 1))
@@ -160,6 +175,8 @@ class Frame:
 
 
     def aabb_is_visible(self, bounds):
+    """ determines if any portion of a 3D aabb bounding box (defined by it's lower and upper bounds)
+    	 is visible in the frame"""
         #bound = list(zip(lb,ub))
         corners = []
         for perm in all_binary_permutations(3):
@@ -199,9 +216,11 @@ class Frame:
             return True
 
     def project_from_tree(self, tree, descend=0):
-        #finds primitives in tree potentially visible in frame. returns primitives in leaf nodes of aabbtree for which some portion of box is visible in frame
-        #allow descent into the tree because i've found the frame transformation matrices from hyslam are perfectly fine locally but can have issues with global projection
-        # resulting in errors - make the process more local by descending into the tree
+       """ finds primitives in tree potentially visible in frame. returns primitives in leaf nodes of aabbtree for which some portion of box is visible in frame
+        allow descent into the tree because i've found the frame transformation matrices from hyslam are perfectly fine locally but can have issues with global projection
+        resulting in errors - make the process more local by descending into the tree
+        returns indices of primitives potentially visible and associated aabb boxes"""
+        
         hits = []
         aabbs = []
         queue = deque()
@@ -231,7 +250,11 @@ class Frame:
 
         return hits, aabbs
 
-    def project_triface(self, face_vertices):  #projects a triangular face into an image
+    def project_triface(self, face_vertices):  
+     """projects a triangular face into an image.
+        returns a boolean indicating if the entire face is visible in the image and the associated position of the
+        face vertices in the image"""
+        
         valid = []
         pos = []
         for vertex in face_vertices:

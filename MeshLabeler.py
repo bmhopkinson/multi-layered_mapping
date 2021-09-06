@@ -30,12 +30,14 @@ def chunks(lst, n):
 
 
 class MeshLabeler():
+	""" labels a mesh using registered image frames. search for mesh components visible in frame is  accelerated using aabb tree.
+		class labels are typically from semantically segmented images which are decoded wit a class map"""
     def __init__(self, frames=None, mesh=None, tree=None, img_dir=[], n_workers=1):
         self.frames = frames
         self.mesh = copy.deepcopy(mesh)
         self.vertices = []
         self.faces = []
-        self.tree = tree
+        self.tree = tree  # aabb tree 
         self.img_dir = img_dir
         self.n_workers = n_workers
         self.manager = None
@@ -45,6 +47,8 @@ class MeshLabeler():
             self.faces = mesh.faces.view(np.ndarray)
 
     def refine_hits(self, frame, hits):
+    """ takes faces that are likely visible (hits) in a frame based on crude method and refines those hits
+        returning only faces (and associated image positions) that are visible in the frame"""
         hits_refined = {}
         for hit in hits:
             vertex_ids = self.faces[hit, :]
@@ -56,7 +60,7 @@ class MeshLabeler():
         return hits_refined
 
     def extract_triangle_from_image(self, triangle, image):
-        # select only the portion of  prediction image within this triangle and covert rgb codes to class data
+        """select only the portion of  prediction image within this triangle and covert rgb codes to class data"""
 
         #crop image to fit triangle and recompute triangle coordinates
         triangle = np.array(triangle, dtype=int)
@@ -80,6 +84,7 @@ class MeshLabeler():
         return selection, tri_crop
 
     def maskrgb_to_class(self, mask):
+    """ decode rgb mask to classes using class map"""
         h, w, channels = mask.shape[0], mask.shape[1], mask.shape[2]
         mask_out = -1 * np.ones((h, w), dtype=int)
 
@@ -96,6 +101,7 @@ class MeshLabeler():
         return mask_out
 
     def fractional_cover_from_selection(self, class_data):
+    """ returns vector indicating the fraction of image input (class_data) in each class (fractional cover in ecological terms)"""
         pixel_count = []
         for i in range(n_classes):
             t = np.sum(class_data == i)
@@ -104,6 +110,9 @@ class MeshLabeler():
         return pixel_count / np.sum(pixel_count)
 
     def process_frames_prediction(self, frames, cover):
+    """ takes in a set of frames associated with a mesh and returns the fractional cover for each mesh face
+        visible in the frames. tried to break this down further but holding onto image sections for even a bit results in enormous memory usage  
+        this function is used as multiprocessing target"""
         for frame in frames:
             print('working on {}, id: {}'.format(frame.label, frame.frame_id))
             hits, aabbs = frame.project_from_tree(self.tree, descend=4)
@@ -124,7 +133,8 @@ class MeshLabeler():
 
         return cover
 
-    def collate_results(self, raw_ds):   #takes raw dictionaries with multiple observations per face (different frames) and collates them by face
+    def collate_results(self, raw_ds):   
+      """takes raw dictionaries with multiple observations per face (different frames) and collates them by face"""
         collated_ds = {}
         for obs in raw_ds:
             m = parse_cover_key.search(obs)
@@ -137,6 +147,7 @@ class MeshLabeler():
         return collated_ds
 
     def from_frame_interval(self, start=0,stop=0):
+    """ determines fractional on faces visible in frames specified in interval. accelerated with multiprocessing""" 
         frames_selection = self.frames[start:stop]
 
         if self.manager is None:
@@ -167,11 +178,13 @@ class MeshLabeler():
         return cover_avg, self.mesh
 
     def from_all_frames(self):
+      """ determines fractional on faces visible in all registered frames"""
         start = 0
         stop = len(self.frames)
         return self.from_frame_interval(start, stop)
 
     def write_labels(self, labels=None, file_name=None):
+     """ writes out fractional cover by face data to text file""" 
         fout = open(file_name, 'w')
         for face in labels:
             fout.write('{:d}'.format(face))
@@ -182,6 +195,9 @@ class MeshLabeler():
         fout.close()
 
     def _color_faces_from_images(self, frames, face_colors,  image_folder, ext):
+    """ colors (rgb) each visible face of the mesh with the average color in associated images whose poses
+        are provided in frame and actual image are in image_folder - can either be rgb images or semantic segmentation.
+        primarily for visualization. target for multiprocessing """
         for frame in frames:
             print('working on {}, id: {}'.format(frame.label, frame.frame_id))
             hits, aabbs = frame.project_from_tree(self.tree, descend=4)
@@ -204,7 +220,9 @@ class MeshLabeler():
         return face_colors
 
 
-    def color_faces_from_images_interval(self, start, stop, image_folder, ext):
+    def color_faces_from_images_interval(self, start, stop, image_folder, ext): 
+    """ frontend for _color_faces_from_images() - colors mesh faces from frames in (start, stop) interval. 
+        breaks those frames into chunks and doles out to multiprocessing targets """
         frames_selection = self.frames[start:stop]
 
         if self.manager is None:
@@ -243,7 +261,8 @@ class MeshLabeler():
 
         return self.mesh
 
-    def color_faces_from_images_all(self, image_folder, ext):
+    def color_faces_from_images_all(self, image_folder, ext): 
+    """ colors all mesh faces visible in frames based on images in image_folder """ 
         start = 0
         stop = len(self.frames)
         return self.color_faces_from_images_interval(start, stop, image_folder, ext)
