@@ -4,7 +4,7 @@ import trimesh
 import xml.etree.ElementTree as ET
 from Camera import Frame, Camera
 from MeshLabeler import MeshLabeler
-from aabbtree_mod import AABB, AABBTree
+from aabbtree import AABB, AABBTree
 import json
 
 """ script to label marsh mesh from images - uses semantically segmented images for class (plant) labeling and raw
@@ -59,8 +59,8 @@ if __name__ == '__main__':
     cameras, frames = load_agisoft_data()
 
     labeler = MeshLabeler(frames=frames, mesh=mesh, tree=tree,img_dir=image_folder, n_workers=20)
-    mesh = labeler.color_faces_from_images_all(image_raw_folder, '.jpg')
-    #mesh = labeler.color_faces_from_images(image_folder, '_pred.png')
+    #mesh = labeler.color_faces_from_images_all(image_raw_folder, '.jpg')
+    mesh = labeler.color_faces_from_images_all(image_folder, '_pred.png')
     #labels, mesh = labeler.from_frame_interval(0, 120)
     #labels, mesh = labeler.from_all_frames()
     #labeler.write_labels(labels, 'test.txt')
