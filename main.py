@@ -1,19 +1,19 @@
 import numpy as np
-import cv2
 import trimesh
 import xml.etree.ElementTree as ET
 from Camera import Frame, Camera
 from MeshLabeler import MeshLabeler
-from aabbtree import AABB, AABBTree
-import json
+from aabbtree import AABBTree
 
 """ script to label marsh mesh from images - uses semantically segmented images for class (plant) labeling and raw
      images for coloring mesh for visualizations """
 
+MODE = 'Color_True'  #options 'Label_Interval', 'Label_All', 'Color_True', 'Color_Class'
+
 mesh_file = './data/Sapelo_202106_run15/mesh_fine.ply'
 camera_file = './data/Sapelo_202106_run15/agisoft_cameras_Imaging.xml'
-image_folder = './data/Sapelo_202106_run15/imaging_preds_3by2/'
-image_raw_folder ='./data/Sapelo_202106_run15/imaging/'
+image_classcolor_folder = './data/Sapelo_202106_run15/imaging_preds_20210909_model/'
+image_truecolor_folder ='./data/Sapelo_202106_run15/imaging/'
 
 
 def load_mesh():
@@ -46,6 +46,22 @@ def load_agisoft_data():
 
     return cameras, frames
 
+def remove_color_other(patch):
+    #converts pixels labels as "other" (orange) to white (background) for visualization
+    other_color = (255, 202, 28)
+    white = (255, 255, 255)
+    h, w, channels = patch.shape[0], patch.shape[1], patch.shape[2]
+    matches = np.zeros((h, w, channels), dtype=bool)
+
+    for c in range(channels):
+        matches[:, :, c] = patch[:, :, c] == other_color[c]
+
+    matches_total = np.sum(matches, axis=2)
+    valid_idx = matches_total == channels
+    patch[valid_idx] = white
+
+    return patch
+
 
 if __name__ == '__main__':
 
@@ -58,17 +74,21 @@ if __name__ == '__main__':
 
     cameras, frames = load_agisoft_data()
 
-    labeler = MeshLabeler(frames=frames, mesh=mesh, tree=tree,img_dir=image_folder, n_workers=20)
-    #mesh = labeler.color_faces_from_images_all(image_raw_folder, '.jpg')
-    mesh = labeler.color_faces_from_images_all(image_folder, '_pred.png')
-    #labels, mesh = labeler.from_frame_interval(0, 120)
-    #labels, mesh = labeler.from_all_frames()
-    #labeler.write_labels(labels, 'test.txt')
+    labeler = MeshLabeler(frames=frames, mesh=mesh, tree=tree, img_dir=image_classcolor_folder, n_workers=20)
+
+    if MODE == 'Label_All':
+        labels, mesh = labeler.from_all_frames()
+        labeler.write_labels(labels, 'fractional_cover_by_face.txt')
+    elif MODE == 'Label_Interval':
+        labels, mesh = labeler.from_frame_interval(0, 40)
+        labeler.write_labels(labels, 'fractional_cover_by_face.txt')
+    elif MODE == 'Color_Class':
+        mesh = labeler.color_faces_from_images_all(image_classcolor_folder, '_pred.png', remove_color_other)
+    elif MODE == 'Color_True':
+        mesh = labeler.color_faces_from_images_all(image_truecolor_folder, '.jpg')
+    else:
+        print("Error MODE not recognized.")
 
     mesh.show()
 
     print('done')
-
-
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
