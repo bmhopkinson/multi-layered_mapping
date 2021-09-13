@@ -40,7 +40,8 @@ class MeshLabeler():
     def __init__(self, frames=None, mesh=None, tree=None, img_dir=[], n_workers=1):
         self.frames = frames
         self.mesh = copy.deepcopy(mesh)
-        self.ray_mesh_intersector = trimesh.ray.ray_triangle.RayMeshIntersector(self.mesh)
+       # self.ray_mesh_intersector = trimesh.ray.ray_triangle.RayMeshIntersector(self.mesh)
+        self.ray_mesh_intersector = trimesh.ray.ray_pyembree.RayMeshIntersector(self.mesh)
         self.vertices = []
         self.faces = []
         self.tree = tree  # aabb tree 
