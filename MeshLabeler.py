@@ -40,7 +40,6 @@ class MeshLabeler():
     def __init__(self, frames=None, mesh=None, tree=None, img_dir=[], n_workers=1):
         self.frames = frames
         self.mesh = copy.deepcopy(mesh)
-       # self.ray_mesh_intersector = trimesh.ray.ray_triangle.RayMeshIntersector(self.mesh)
         self.ray_mesh_intersector = trimesh.ray.ray_pyembree.RayMeshIntersector(self.mesh)
         self.vertices = []
         self.faces = []
@@ -78,7 +77,7 @@ class MeshLabeler():
             cover_avg[face] = np.mean(cover[face], axis=0)
 
         for face in cover_avg:
-            color = int(255 * cover_avg[face][4])
+            color = int(255 * cover_avg[face][1])
             self.mesh.visual.face_colors[face] = np.array([255 - color, 255, 255 - color, 255], dtype=np.uint8)
 
         return cover_avg, self.mesh
@@ -143,9 +142,10 @@ class MeshLabeler():
         return hits_refined
 
 
-    def line_of_sight_test(self, face_ids, cam_center):
-        """ tests for a clear line of sight (not obstructed by mesh) between face_id and cam_center (in world coordinates)"""
-
+    def line_of_sight_test(self, face_ids, cam_center, forward=True):
+        """ tests for a clear line of sight (not obstructed by mesh) between face_id and cam_center (in world coordinates);
+        test can either be conducted by projecting a ray from camera center toward face center (forward) or backward- found
+        forward to be slightly faster (i thought the opposite might be the case) and it's more conceptually straightfoward"""
 
         ray_orgs = np.empty((0, 3))
         ray_dirs = np.empty((0, 3))
@@ -154,27 +154,45 @@ class MeshLabeler():
         for face_id in face_ids:
             face_ids_ordered.append(face_id)
 
-            # determine ray direction from center of face_id to cam_center
+            # determine ray direction from cam_center to center of face (or reserve)
             vertex_ids = self.faces[face_id, :]
             face_vertices = self.vertices[vertex_ids, :]
             face_center = np.mean(face_vertices, axis=0)
-            ray_dir = cam_center.reshape((1, 3)) - face_center
+
+            if forward:
+                ray_dir = face_center - cam_center.reshape((1,3))
+            else:
+                ray_dir = cam_center.reshape((1, 3)) - face_center
+
             ray_dir = ray_dir/np.linalg.norm(ray_dir)
-
-            # ray origin will be a point along the ray direction slightly off the face center
-            v_deltas = face_vertices - face_vertices[[2, 0, 1], :]
-            edge_len_mean = np.mean(np.linalg.norm(v_deltas, axis=1))
-            ray_org = face_center + 0.05*edge_len_mean*ray_dir
-
-            ray_orgs = np.append(ray_orgs, ray_org, axis=0)
             ray_dirs = np.append(ray_dirs, ray_dir, axis=0)
+
+            #ray origin
+            if forward:
+                ray_orgs = np.append(ray_orgs, cam_center.reshape((1, 3)), axis=0)
+            else:
+                #ray origin will be a point along the ray direction slightly off the face center
+                v_deltas = face_vertices - face_vertices[[2, 0, 1], :]
+                edge_len_mean = np.mean(np.linalg.norm(v_deltas, axis=1))
+                ray_org = face_center + 0.05*edge_len_mean*ray_dir
+                ray_orgs = np.append(ray_orgs, ray_org, axis=0)
+
 
         #conduct intersection test
         intersection_results = self.ray_mesh_intersector.intersects_first(ray_orgs, ray_dirs)
 
-        for face_id, interect_id in zip(face_ids_ordered,intersection_results):
-            if interect_id != -1 and interect_id != face_id:  #hits another mesh face so los is blocked, remove from dictionary
+        for face_id, intersect_id in zip(face_ids_ordered, intersection_results):
+            remove = False
+            if forward:
+                if face_id != intersect_id:
+                    remove = True
+            else:
+                if intersect_id != -1 and intersect_id != face_id:
+                    remove = True
+
+            if remove:
                 face_ids.pop(face_id)
+                print('los not clear for {}'.format(face_id))
 
         return face_ids
 
@@ -197,8 +215,6 @@ class MeshLabeler():
         mask = mask.astype(np.bool)
         selection = np.zeros_like(image_crop)
         selection[mask] = image_crop[mask]  #extract predictions within mask region
-      #  cv2.imshow('selection', selection)
-      #  cv2.waitKey(0)
 
         return selection, tri_crop
 
@@ -312,7 +328,6 @@ class MeshLabeler():
                 cv2.fillConvexPoly(mask, tri_coords, 255)
                 color = cv2.mean(selection, mask)
                 key = str(face) + "_" + str(frame.frame_id)
-                # face_colors[key] = {'color': color[0:3], 'coords': tri_coords}
                 face_colors[key] = color[0:3]
 
         return face_colors
