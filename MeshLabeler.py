@@ -3,11 +3,12 @@ import cv2
 import copy
 import math
 import re
+import trimesh
 import multiprocessing as mp
 
 parse_cover_key = re.compile('(.*)_(.*)')
 
-DESCEND = 4
+DESCEND = 4  #number of levels to descend into the AABBtree, used to overcome issues with camera poses at global scale
 
 n_classes =9
 class_map = {  # RGB to Class
@@ -38,6 +39,7 @@ class MeshLabeler():
     def __init__(self, frames=None, mesh=None, tree=None, img_dir=[], n_workers=1):
         self.frames = frames
         self.mesh = copy.deepcopy(mesh)
+        self.ray_mesh_intersector = trimesh.ray.ray_triangle.RayMeshIntersector(self.mesh)
         self.vertices = []
         self.faces = []
         self.tree = tree  # aabb tree 

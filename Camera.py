@@ -50,7 +50,7 @@ class Camera:
         y = self.cy + yp * self.fy
 
         in_image = (0 < x < self.dim[0]) and (0 < y <  self.dim[1])
-        if(in_image and in_image_pinhole):
+        if in_image and sanity_check:
             return True, np.append(x,y)
         else:
             return False, np.append(x,y)

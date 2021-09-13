@@ -8,7 +8,7 @@ from aabbtree import AABBTree
 """ script to label marsh mesh from images - uses semantically segmented images for class (plant) labeling and raw
      images for coloring mesh for visualizations """
 
-MODE = 'Color_True'  #options 'Label_Interval', 'Label_All', 'Color_True', 'Color_Class'
+MODE = 'Label_All'  #options 'Label_Interval', 'Label_All', 'Color_True', 'Color_Class'
 
 mesh_file = './data/Sapelo_202106_run15/mesh_fine.ply'
 camera_file = './data/Sapelo_202106_run15/agisoft_cameras_Imaging.xml'
