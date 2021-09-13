@@ -4,11 +4,12 @@ import xml.etree.ElementTree as ET
 from Camera import Frame, Camera
 from MeshLabeler import MeshLabeler
 from aabbtree import AABBTree
+import time
 
 """ script to label marsh mesh from images - uses semantically segmented images for class (plant) labeling and raw
      images for coloring mesh for visualizations """
 
-MODE = 'Label_All'  #options 'Label_Interval', 'Label_All', 'Color_True', 'Color_Class'
+MODE = 'Label_Interval'  #options 'Label_Interval', 'Label_All', 'Color_True', 'Color_Class'
 
 mesh_file = './data/Sapelo_202106_run15/mesh_fine.ply'
 camera_file = './data/Sapelo_202106_run15/agisoft_cameras_Imaging.xml'
@@ -76,11 +77,12 @@ if __name__ == '__main__':
 
     labeler = MeshLabeler(frames=frames, mesh=mesh, tree=tree, img_dir=image_classcolor_folder, n_workers=20)
 
+    start = time.perf_counter()
     if MODE == 'Label_All':
         labels, mesh = labeler.from_all_frames()
         labeler.write_labels(labels, 'fractional_cover_by_face.txt')
     elif MODE == 'Label_Interval':
-        labels, mesh = labeler.from_frame_interval(0, 40)
+        labels, mesh = labeler.from_frame_interval(0, 20)
         labeler.write_labels(labels, 'fractional_cover_by_face.txt')
     elif MODE == 'Color_Class':
         mesh = labeler.color_faces_from_images_all(image_classcolor_folder, '_pred.png', remove_color_other)
@@ -89,6 +91,9 @@ if __name__ == '__main__':
     else:
         print("Error MODE not recognized.")
 
+    stop = time.perf_counter()
+    dur = stop-start
+    print('processing took : {} seconds'.format(dur))
     mesh.show()
 
     print('done')

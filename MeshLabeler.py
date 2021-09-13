@@ -5,6 +5,7 @@ import math
 import re
 import trimesh
 import multiprocessing as mp
+import time
 
 parse_cover_key = re.compile('(.*)_(.*)')
 
@@ -135,7 +136,46 @@ class MeshLabeler():
             if valid:
                 hits_refined[hit] = pos
 
+        if hits_refined: #assuming we have potential visible faces, check for line of sight
+            hits_refined = self.line_of_sight_test(hits_refined, frame.Twc[0:3, 3])
+
         return hits_refined
+
+
+    def line_of_sight_test(self, face_ids, cam_center):
+        """ tests for a clear line of sight (not obstructed by mesh) between face_id and cam_center (in world coordinates)"""
+
+
+        ray_orgs = np.empty((0, 3))
+        ray_dirs = np.empty((0, 3))
+        face_ids_ordered = []
+
+        for face_id in face_ids:
+            face_ids_ordered.append(face_id)
+
+            # determine ray direction from center of face_id to cam_center
+            vertex_ids = self.faces[face_id, :]
+            face_vertices = self.vertices[vertex_ids, :]
+            face_center = np.mean(face_vertices, axis=0)
+            ray_dir = cam_center.reshape((1, 3)) - face_center
+            ray_dir = ray_dir/np.linalg.norm(ray_dir)
+
+            # ray origin will be a point along the ray direction slightly off the face center
+            v_deltas = face_vertices - face_vertices[[2, 0, 1], :]
+            edge_len_mean = np.mean(np.linalg.norm(v_deltas, axis=1))
+            ray_org = face_center + 0.05*edge_len_mean*ray_dir
+
+            ray_orgs = np.append(ray_orgs, ray_org, axis=0)
+            ray_dirs = np.append(ray_dirs, ray_dir, axis=0)
+
+        #conduct intersection test
+        intersection_results = self.ray_mesh_intersector.intersects_first(ray_orgs, ray_dirs)
+
+        for face_id, interect_id in zip(face_ids_ordered,intersection_results):
+            if interect_id != -1 and interect_id != face_id:  #hits another mesh face so los is blocked, remove from dictionary
+                face_ids.pop(face_id)
+
+        return face_ids
 
     def extract_triangle_from_image(self, triangle, image):
         """select only the portion of  prediction image within this triangle and covert rgb codes to class data"""
