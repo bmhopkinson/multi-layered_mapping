@@ -6,6 +6,8 @@ import copy
 import math
 import re
 import json
+import cv2
+import os
 
 
 DESCEND = 4  #number of levels to descend into the AABBtree, used to overcome issues with camera poses at global scale
@@ -18,14 +20,16 @@ def chunks(lst, n):
         yield lst[i:i + n]
 
 class MeshPlacer():
-    def __init__(self, frames=None, mesh=None, tree=None, obj_dir=[], n_workers=1):
+    def __init__(self, frames=None, mesh=None, tree=None, obj_dir=[], img_dir=[], n_workers=1):
         self.frames = frames
+        self.frame_from_id_dict = self.generate_frame_from_id_dict(frames)
         self.mesh = copy.deepcopy(mesh)
         self.ray_mesh_intersector = trimesh.ray.ray_pyembree.RayMeshIntersector(self.mesh)
         self.vertices = []
         self.faces = []
         self.tree = tree  # aabb tree
         self.obj_dir = obj_dir
+        self.img_dir = img_dir
         self.n_workers = n_workers
         self.manager = None
 
@@ -55,6 +59,7 @@ class MeshPlacer():
             j.join()
 
         face_views_collated = self.collate_results(face_views)
+        self.visualize_face_correspondences(face_views_collated, n=10)
 
         face_assigned_frame = {}
         for face in face_views_collated:
@@ -68,10 +73,10 @@ class MeshPlacer():
 
             face_assigned_frame[face] = frame_id
 
-        with open('face_views_collated.json','w') as f:
+        with open('face_views_collated.json', 'w') as f:
             json.dump(face_views_collated, f)
 
-        with open('face_assigned_frames.json','w') as f:
+        with open('face_assigned_frames.json', 'w') as f:
             json.dump(face_assigned_frame, f)
 
         return face_assigned_frame
@@ -174,5 +179,73 @@ class MeshPlacer():
                 face_ids.pop(face_id)
 
         return face_ids
+
+    def visualize_face_correspondences(self, face_views_collated, n=10):
+        """draws outline of projected face onto images it projects into. used to qualitatively assess consistency of image registration"""
+
+        i = 0
+
+        N_GAP = 2000
+        j_gap = 0
+        in_gap = False
+
+        output_folder ='./output/'
+        if not os.path.isdir(output_folder):
+            os.mkdir(output_folder)
+
+        for face in face_views_collated:
+            if i > n:
+                break
+
+            views = face_views_collated[face]
+
+            if len(views) > 2:
+
+                if not in_gap:
+                    i = i + 1
+                    vertex_ids = self.faces[face, :]
+                    face_vertices = self.vertices[vertex_ids, :]
+                    for view in views:
+                        #determine bounds of face in this frame
+                        frame_id = view[0]
+                        frame = self.frame_from_id(frame_id)
+                        valid, pos = frame.project_triface(face_vertices)
+
+                        #draw bounds of face on this fram
+                        img_path = self.img_dir + frame.label + ".jpg"
+                        img = cv2.imread(img_path)
+
+                        closed = True
+                        color = [255, 0, 0]
+                        thickness = 20
+                        pos = pos.astype(np.int32)
+                        pos = pos.reshape(-1, 1, 2)
+
+                        img = cv2.polylines(img, [pos], closed, color, thickness)
+                        outpath = output_folder + str(face) + "_" + frame.label + '.jpg'
+                        cv2.imwrite(outpath,img)
+
+                        in_gap = True
+
+                else:
+                    j_gap = j_gap + 1
+
+                    if j_gap < N_GAP:
+                        continue
+                    else:
+                        in_gap = False
+                        j_gap = 0
+
+    def generate_frame_from_id_dict(self, frames):
+        frame_from_id = {}
+        for i, frame in enumerate(frames):
+            frame_from_id[frame.frame_id] = i
+
+        return frame_from_id
+
+    def frame_from_id(self, frame_id):
+        return self.frames[self.frame_from_id_dict[frame_id]]
+
+
 
 

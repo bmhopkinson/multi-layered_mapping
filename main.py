@@ -14,6 +14,7 @@ MODE = 'Color_Class'  #options 'Label_Interval', 'Label_All', 'Color_True', 'Col
 mesh_file = './data/Sapelo_202106_run15/mesh_fine.ply'
 camera_file = './data/Sapelo_202106_run15/agisoft_cameras_Imaging.xml'
 detected_objects_dir = './data/Sapelo_202106_run15/snail_preds/'
+image_dir = './data/Sapelo_202106_run15/imaging/'
 
 def load_mesh():
     mesh = trimesh.load_mesh(mesh_file)
@@ -57,6 +58,6 @@ if __name__ == '__main__':
 
     cameras, frames = load_agisoft_data()
 
-    object_placer = MeshPlacer(frames=frames, mesh=mesh, tree=tree, n_workers=8)
-    res =  object_placer.allocate_faces_to_frames(start=0, stop=20)
+    object_placer = MeshPlacer(frames=frames, mesh=mesh, tree=tree, n_workers=8, obj_dir=detected_objects_dir, img_dir=image_dir)
+    res =  object_placer.allocate_faces_to_frames(start=0, stop=80)
     print('done')
