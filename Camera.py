@@ -1,6 +1,7 @@
 import numpy as np
 from collections import deque
 import itertools
+import pdb
 
 
 def all_binary_permutations(n):
@@ -54,6 +55,39 @@ class Camera:
             return True, np.append(x,y)
         else:
             return False, np.append(x,y)
+
+    def backproject(self, u, v, z):
+        '''backproject points u,v (col, row) in pixel coordinates into 3D at distance z'''
+        ud = (u - self.cx) / self.fx
+        vd = (v - self.cy) / self.fy
+        uc, vc = self.distortion_correction_oulu(ud, vd) # iteratively correct for radial distortion and tangential distortion
+    #    pdb.set_trace()
+        return np.array([uc*z, vc*z, z])
+
+
+    def distortion_correction_oulu(self, u_raw, v_raw):
+        '''for backprojection of pixel points. takes in distorted (real) focal length normalized coordinates in image (u/f, v/f) and
+        corrects these points to where they would occur without distortion; modified from J-Y Bouguet Camera Calibration Toolbox for Matlab  '''
+        N_ITER = 20
+
+        k1 = self.k1 #radial distortion coeffs
+        k2 = self.k2
+        k3 = self.k3
+        p1 = self.p1   # tangential distortion coeffs
+        p2 = self.p2
+
+        x = np.array([u_raw, v_raw]) # initial guess
+        x_dist = x
+
+        for i in range(N_ITER):
+            r_2 = np.linalg.norm(x)
+            k_radial = 1 + k1 * r_2 + k2 * r_2**2 + k3 * r_2**3
+            dx1 = 2 * p1 * x[0]*x[1] + p2 * (r_2 + 2 * x[0]**2)
+            dx2 = p1 * (r_2 + 2 * x[1]**2) + 2 * p2 * x[0] * x[1]
+            delta_x = np.array([dx1, dx2])
+            x = (x_dist - delta_x) / k_radial
+
+        return x[0], x[1]
 
     def load_agisoft(self, xml_data, version):
         """" load camera parameters from xml in agisoft format """
@@ -171,6 +205,13 @@ class Frame:
         in_image = (0 < x_img[0] < self.camera.dim[0]) and (0 < x_img[1] < self.camera.dim[1])
         return in_image, x_img, z_pos
 
+    def backproject(self, u, v, z):
+        '''backproject pixel coordinates u, v into world coordinates at distance z'''
+        x_cam  = self.camera.backproject(u, v, z)
+        x_cam = np.append(x_cam, 1.000)
+        x_cam = x_cam.reshape((4, 1))
+        x_world = self.Twc * x_cam
+        return x_world[0:3]
 
     def aabb_is_visible(self, bounds):
         """ determines if any portion of a 3D aabb bounding box (defined by it's lower and upper bounds)

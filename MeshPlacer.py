@@ -87,12 +87,6 @@ class MeshPlacer():
 
         self.visualize_face_assignments(faces_assigned_frame, n=40)
 
-        # with open('face_views_collated.json', 'w') as f:
-        #     json.dump(face_views_collated, f)
-        #
-        # with open('face_assigned_frames.json', 'w') as f:
-        #     json.dump(faces_assigned_frame, f)
-
         self.faces_assigned = faces_assigned_frame
         return faces_assigned_frame
 
@@ -197,23 +191,9 @@ class MeshPlacer():
 
     def find_objects_in_faces(self):
         frame_ids = list(self.faces_assigned.keys())
-        all_objs = self.run_concurrent(self._find_objects_in_faces, frame_ids)
-
-        # for frame_id in self.faces_assigned:
-        #     all_objs[frame_id] = {}
-        #     frame = self.frame_from_id(frame_id)
-        #     for face in self.faces_assigned[frame_id]:
-        #         objs = self.objects_in_face(frame, face)
-        #         if objs:
-        #             all_objs[frame_id][face] = objs
-
-        self.objects_assigned = all_objs
-
-       # with open('assigned_objects.json', 'w') as f:
-       #     json.dump(all_objs, f)
-
+        self.objects_assigned = self.run_concurrent(self._find_objects_in_faces, frame_ids)
         self.visualize_object_assignments(n=40)
-        return all_objs
+        return self.objects_assigned
 
     def _find_objects_in_faces(self, frame_ids, results, args):
         for frame_id in frame_ids:
@@ -239,8 +219,6 @@ class MeshPlacer():
         for i, row in objs_frame.iterrows():
             obj_center = np.array([row['x_c'], row['y_c']])
             if self.is_in_triangle(obj_center, pos):
-              #  print('obj in triangle, obj center: {}'.format(obj_center))
-              #  print('triangle bounds: {}'.format(pos))
                 objs_valid.append(obj_center)
 
         return objs_valid
@@ -263,6 +241,19 @@ class MeshPlacer():
     def cross_product(self, pt, tri_1, tri_2):
         res = (pt[0] - tri_2[0])*(tri_1[1] - tri_2[1] ) - (tri_1[0] - tri_2[0])*(pt[1] - tri_2[1])
         return res
+
+
+    def backproject_objects_to_mesh(self):
+        for frame_id in self.objects_assigned:
+            frame = self.frame_from_id(frame_id)
+            cam_center = frame.Twc[0:3, 3]
+            ray_orgs = np.empty((0, 3))
+            ray_dirs = np.empty((0, 3))
+
+            for face_id in self.objects_assigned[frame_id]:
+                for obj in self.objects_assigned[frame_id][face_id]:
+                    pt_world = frame.backproject(obj[0], obj[1], 1.0)
+                    ray_orgs = np.append(ray_orgs, cam_center.reshape((1, 3)), axis=0)
 
     def generate_frame_from_id_dict(self, frames):
         frame_from_id = {}

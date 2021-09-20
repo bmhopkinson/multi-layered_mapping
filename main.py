@@ -69,6 +69,7 @@ if __name__ == '__main__':
     start = time.perf_counter()
     res =  object_placer.allocate_faces_to_frames(start = 0, stop = 40)
     res2 = object_placer.find_objects_in_faces()
+    object_placer.backproject_objects_to_mesh()
     stop = time.perf_counter()
     dur = stop-start
     print('processing took : {} seconds'.format(dur))
