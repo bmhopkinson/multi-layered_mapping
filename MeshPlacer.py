@@ -1,6 +1,7 @@
 import multiprocessing as mp
 import numpy as np
 import trimesh
+import pandas
 import sys
 import copy
 import math
@@ -9,6 +10,7 @@ import json
 import cv2
 import os
 
+#https://stackoverflow.com/questions/2049582/how-to-determine-if-a-point-is-in-a-2d-triangle
 
 DESCEND = 4  #number of levels to descend into the AABBtree, used to overcome issues with camera poses at global scale
 
@@ -20,7 +22,7 @@ def chunks(lst, n):
         yield lst[i:i + n]
 
 class MeshPlacer():
-    def __init__(self, frames=None, mesh=None, tree=None, obj_dir=[], img_dir=[], n_workers=1):
+    def __init__(self, frames=None, mesh=None, tree=None, obj_info={}, img_dir=[], n_workers=1):
         self.frames = frames
         self.frame_from_id_dict = self.generate_frame_from_id_dict(frames)
         self.mesh = copy.deepcopy(mesh)
@@ -28,7 +30,7 @@ class MeshPlacer():
         self.vertices = []
         self.faces = []
         self.tree = tree  # aabb tree
-        self.obj_dir = obj_dir
+        self.objects = []
         self.img_dir = img_dir
         self.n_workers = n_workers
         self.manager = None
@@ -36,6 +38,24 @@ class MeshPlacer():
         if self.mesh is not None:
             self.vertices = mesh.vertices.view(np.ndarray)
             self.faces = mesh.faces.view(np.ndarray)
+
+        if obj_info:
+            self.objects = self.load_objects(obj_info)
+
+
+    def load_objects(self, obj_info):
+        object_data = {}
+        for frame in self.frames:
+            obj_file = obj_info['dir'] + frame.label + obj_info['ext']
+            frame_data = pandas.read_csv(obj_file, sep='\t')
+            frame_data['x_c'] = (frame_data['x_min'] + frame_data['x_max']) / 2
+            frame_data['y_c'] = (frame_data['y_min'] + frame_data['y_max']) / 2
+            object_data[frame.frame_id] = frame_data
+
+       # print('done')
+        return object_data
+
+
 
 
     def allocate_faces_to_frames(self, start=0, stop=None):
@@ -59,7 +79,7 @@ class MeshPlacer():
             j.join()
 
         face_views_collated = self.collate_results(face_views)
-        self.visualize_face_correspondences(face_views_collated, n=10)
+       # self.visualize_face_correspondences(face_views_collated, n=10)
 
         face_assigned_frame = {}
         for face in face_views_collated:
@@ -72,6 +92,8 @@ class MeshPlacer():
                     min_dist = view[1]
 
             face_assigned_frame[face] = frame_id
+
+        self.visualize_face_assignments(face_assigned_frame, n=10)
 
         with open('face_views_collated.json', 'w') as f:
             json.dump(face_views_collated, f)
@@ -180,6 +202,18 @@ class MeshPlacer():
 
         return face_ids
 
+
+
+    def generate_frame_from_id_dict(self, frames):
+        frame_from_id = {}
+        for i, frame in enumerate(frames):
+            frame_from_id[frame.frame_id] = i
+
+        return frame_from_id
+
+    def frame_from_id(self, frame_id):
+        return self.frames[self.frame_from_id_dict[frame_id]]
+
     def visualize_face_correspondences(self, face_views_collated, n=10):
         """draws outline of projected face onto images it projects into. used to qualitatively assess consistency of image registration"""
 
@@ -236,16 +270,48 @@ class MeshPlacer():
                         in_gap = False
                         j_gap = 0
 
-    def generate_frame_from_id_dict(self, frames):
-        frame_from_id = {}
-        for i, frame in enumerate(frames):
-            frame_from_id[frame.frame_id] = i
+    def visualize_face_assignments(self, face_assignments, n=10):
+        """ for selected frames (n total), draws outline of all faces assinged to this frame after projection into image. used to qualitatively assess assingment process"""
 
-        return frame_from_id
+        #prepare output directory
+        output_folder = './output/'
+        if not os.path.isdir(output_folder):
+            os.mkdir(output_folder)
 
-    def frame_from_id(self, frame_id):
-        return self.frames[self.frame_from_id_dict[frame_id]]
+        #invert face_assignments
+        faces_by_frame = {}
+        for face in face_assignments:
+            frame_id = face_assignments[face]
+            if frame_id in faces_by_frame:
+                faces_by_frame[frame_id].append(face)
+            else:
+                faces_by_frame[frame_id] = [face]
 
+        i = 0
+        for frame_id in faces_by_frame:
+            if i > n:
+                break
 
+            frame = self.frame_from_id(frame_id)  #get relevant frame and load image
+            img_path = self.img_dir + frame.label + ".jpg"
+            img = cv2.imread(img_path)
+
+            #draw projected assigned faces on img
+            for face in faces_by_frame[frame_id]:
+                vertex_ids = self.faces[face, :]
+                face_vertices = self.vertices[vertex_ids, :]
+                valid, pos = frame.project_triface(face_vertices)
+
+                #draw face on img
+                closed = True
+                color = [255, 0, 0]
+                thickness = 5
+                pos = pos.astype(np.int32)
+                pos = pos.reshape(-1, 1, 2)
+                img = cv2.polylines(img, [pos], closed, color, thickness)
+
+            outpath = output_folder + frame.label + '_assigned_faces.jpg'
+            cv2.imwrite(outpath, img)
+            i = i + 1
 
 
