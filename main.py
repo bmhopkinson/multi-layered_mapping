@@ -11,13 +11,13 @@ import time
 
 MODE = 'Color_Class'  #options 'Label_Interval', 'Label_All', 'Color_True', 'Color_Class'
 
-mesh_file = './data/Sapelo_202106_run13/mesh_fine.ply'
-camera_file = './data/Sapelo_202106_run13/agisoft_cameras_Imaging.xml'
+mesh_file = './data/Sapelo_202106_run10/mesh.ply'
+camera_file = './data/Sapelo_202106_run10/agisoft_cameras_Imaging.xml'
 
-image_dir = './data/Sapelo_202106_run13/imaging/'
+image_dir = './data/Sapelo_202106_run10/imaging/'
 
 object_info = {
-    'dir': './data/Sapelo_202106_run13/snail_preds/',
+    'dir': './data/Sapelo_202106_run10/snail_preds/',
     'ext': '_preds.txt'
 #    fmt:
 }
@@ -56,9 +56,6 @@ def load_agisoft_data():
 if __name__ == '__main__':
 
     mesh = load_mesh()
-    vertices = mesh.vertices.view(np.ndarray)
-    faces = mesh.faces.view(np.ndarray)
-
     tree = AABBTree()
     tree = tree.from_mesh_faces(mesh)
 
@@ -67,12 +64,7 @@ if __name__ == '__main__':
     object_placer = MeshPlacer(frames=frames, mesh=mesh, tree=tree, n_workers=8, obj_info=object_info, img_dir=image_dir)
 
     start = time.perf_counter()
-    res =  object_placer.allocate_faces_to_frames()
-    res2 = object_placer.find_objects_in_faces()
-    object_placer.backproject_objects_to_mesh()
-    object_placer.write_placed_objects('out_test.txt')
+    object_placer.place_objects_from_frames(start=0, stop=20)
     stop = time.perf_counter()
     dur = stop-start
     print('processing took : {} seconds'.format(dur))
-
-    print('done')

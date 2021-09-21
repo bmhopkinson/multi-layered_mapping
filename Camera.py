@@ -3,7 +3,6 @@ from collections import deque
 import itertools
 import pdb
 
-
 def all_binary_permutations(n):
    return [list(map(int, seq)) for seq in itertools.product("01", repeat=n)]
 

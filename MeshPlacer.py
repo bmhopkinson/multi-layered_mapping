@@ -1,30 +1,23 @@
-import multiprocessing as mp
-import pdb
-
 import numpy as np
 import trimesh
 import pandas
 import sys
 import copy
-import math
 import re
 import json
 import cv2
 import os
+from utils.helpers import run_concurrent, run_singlethreaded
 
-#https://stackoverflow.com/questions/2049582/how-to-determine-if-a-point-is-in-a-2d-triangle
-
-DESCEND = 4  #number of levels to descend into the AABBtree, used to overcome issues with camera poses at global scale
-
-parse_cover_key = re.compile('(.*)_(.*)')
 
 def chunks(lst, n):
     """Yield successive n-sized chunks from lst."""
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
 
+DESCEND = 4  #number of levels to descend into the AABBtree, used to overcome issues with camera poses at global scale
 
-
+parse_cover_key = re.compile('(.*)_(.*)')
 
 class MeshPlacer():
     def __init__(self, frames=None, mesh=None, tree=None, obj_info={}, img_dir=[], n_workers=1):
@@ -41,7 +34,8 @@ class MeshPlacer():
         self.objects_world = []
         self.img_dir = img_dir
         self.n_workers = n_workers
-        self.manager = None
+        self.manager = None   # data structure manager for multiprocessing operations
+        self.run_function = run_concurrent
 
         if self.mesh is not None:
             self.vertices = mesh.vertices.view(np.ndarray)
@@ -56,6 +50,7 @@ class MeshPlacer():
         for frame in self.frames:
             obj_file = obj_info['dir'] + frame.label + obj_info['ext']
             frame_data = pandas.read_csv(obj_file, sep='\t')
+         #   frame_data['type'] = frame_data['type'].astype(int)
             frame_data['x_c'] = (frame_data['x_min'] + frame_data['x_max']) / 2
             frame_data['y_c'] = (frame_data['y_min'] + frame_data['y_max']) / 2
             object_data[frame.frame_id] = frame_data
@@ -63,12 +58,22 @@ class MeshPlacer():
        # print('done')
         return object_data
 
+
+    def place_objects_from_frames(self, start=0, stop=None, outfile='out.txt'):
+        if stop is None:  #this means process all frames
+            stop = len(self.frames)
+
+        self.allocate_faces_to_frames(start, stop)
+        self.find_objects_in_faces()
+        self.backproject_objects_to_mesh()
+        self.write_placed_objects(outfile)
+
     def allocate_faces_to_frames(self, start=0, stop=None):
         if stop is None:  #this means process all frames
             stop = len(self.frames)
 
         frames_selection = self.frames[start:stop]
-        results = self.run_concurrent(self.visible_face_distances, frames_selection, args=[])
+        results = self.run_function(self, self.visible_face_distances, frames_selection, args=[], n_workers=self.n_workers)
         face_views_collated = self.collate_results(results)
        # self.visualize_face_correspondences(face_views_collated, n=10)
 
@@ -194,7 +199,7 @@ class MeshPlacer():
 
     def find_objects_in_faces(self):
         frame_ids = list(self.faces_assigned.keys())
-        self.objects_assigned = self.run_concurrent(self._find_objects_in_faces, frame_ids)
+        self.objects_assigned = self.run_function(self, self._find_objects_in_faces,  frame_ids, args=[], n_workers=self.n_workers)
         self.visualize_object_assignments(n=40)
         return self.objects_assigned
 
@@ -222,7 +227,7 @@ class MeshPlacer():
         for i, row in objs_frame.iterrows():
             obj_center = np.array([row['x_c'], row['y_c']])
             if self.is_in_triangle(obj_center, pos):
-                objs_valid.append({'type': row['type'], 'img_xy': obj_center})
+                objs_valid.append({'type': row['type'].astype(int), 'img_xy': obj_center})
 
         return objs_valid
 
@@ -271,7 +276,7 @@ class MeshPlacer():
     def write_placed_objects(self, out_path):
         fout = open(out_path, 'w')
         for obj in self.objects_world:
-            fout.write('{:f}'.format(obj['type']))
+            fout.write('{:d}'.format(obj['type']))
             for x in obj['x_world']:
                 fout.write('\t{:f}'.format(x))
             fout.write('\n')
@@ -289,22 +294,22 @@ class MeshPlacer():
     def frame_from_id(self, frame_id):
         return self.frames[self.frame_from_id_dict[frame_id]]
 
-    def run_concurrent(self, func=[], data_in=[], args=[], ):
-        if self.manager is None:
-            self.manager = mp.Manager()
-        results = self.manager.dict()  # this will hold info about which faces are visible in which frames:  key 'faceid_frame_id', value: dist from center of projected face to camera projection center,
-        # this structure is simpler to deal with in multiprocesing context and will be postproccesed later
-        jobs = []
-        for chunk in chunks(data_in, math.ceil(len(data_in) / self.n_workers)):
-            j = mp.Process(target=func,
-                           args=(chunk, results, args))
-            j.start()
-            jobs.append(j)
-
-        for j in jobs:
-            j.join()
-
-        return results.copy()  #convert to normal dictionary
+    # def run_concurrent(self, func=[], data_in=[], args=[], ):
+    #     if self.manager is None:
+    #         self.manager = mp.Manager()
+    #     results = self.manager.dict()  # this will hold info about which faces are visible in which frames:  key 'faceid_frame_id', value: dist from center of projected face to camera projection center,
+    #     # this structure is simpler to deal with in multiprocesing context and will be postproccesed later
+    #     jobs = []
+    #     for chunk in chunks(data_in, math.ceil(len(data_in) / self.n_workers)):
+    #         j = mp.Process(target=func,
+    #                        args=(chunk, results, args))
+    #         j.start()
+    #         jobs.append(j)
+    #
+    #     for j in jobs:
+    #         j.join()
+    #
+    #     return results.copy()  #convert to normal dictionary
 
     def visualize_face_correspondences(self, face_views_collated, n=10):
         """draws outline of projected face onto images it projects into. used to qualitatively assess consistency of image registration"""
