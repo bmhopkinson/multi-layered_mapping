@@ -6,6 +6,7 @@ __pycache__/
 # C extensions
 *.so
 
+display_objs_pointcloud.m
 data/
 run/
 tmp/

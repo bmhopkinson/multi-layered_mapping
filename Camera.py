@@ -67,7 +67,8 @@ class Camera:
 
     def distortion_correction_oulu(self, u_raw, v_raw):
         '''for backprojection of pixel points. takes in distorted (real) focal length normalized coordinates in image (u/f, v/f) and
-        corrects these points to where they would occur without distortion; modified from J-Y Bouguet Camera Calibration Toolbox for Matlab  '''
+        corrects these points to where they would occur without distortion; modified from J-Y Bouguet Camera Calibration Toolbox for Matlab,
+        based on Heikkila and Silven A four-step camera calibration procedure with implicit image correction 1997  '''
         N_ITER = 20
 
         k1 = self.k1 #radial distortion coeffs
@@ -86,6 +87,7 @@ class Camera:
             dx2 = p1 * (r_2 + 2 * x[1]**2) + 2 * p2 * x[0] * x[1]
             delta_x = np.array([dx1, dx2])
             x = (x_dist - delta_x) / k_radial
+         #   print('i: {}, x: {}'.format(i, x))
 
         return x[0], x[1]
 
@@ -207,10 +209,10 @@ class Frame:
 
     def backproject(self, u, v, z):
         '''backproject pixel coordinates u, v into world coordinates at distance z'''
-        x_cam  = self.camera.backproject(u, v, z)
+        x_cam = self.camera.backproject(u, v, z)
         x_cam = np.append(x_cam, 1.000)
         x_cam = x_cam.reshape((4, 1))
-        x_world = self.Twc * x_cam
+        x_world = np.matmul(self.Twc, x_cam)
         return x_world[0:3]
 
     def aabb_is_visible(self, bounds):

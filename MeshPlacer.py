@@ -1,4 +1,6 @@
 import multiprocessing as mp
+import pdb
+
 import numpy as np
 import trimesh
 import pandas
@@ -34,8 +36,9 @@ class MeshPlacer():
         self.faces = []
         self.faces_assigned = {}
         self.tree = tree  # aabb tree
-        self.objects = []
+        self.objects_imgs = []
         self.objects_assigned = {}
+        self.objects_world = []
         self.img_dir = img_dir
         self.n_workers = n_workers
         self.manager = None
@@ -45,7 +48,7 @@ class MeshPlacer():
             self.faces = mesh.faces.view(np.ndarray)
 
         if obj_info:
-            self.objects = self.load_objects(obj_info)
+            self.objects_imgs = self.load_objects(obj_info)
 
 
     def load_objects(self, obj_info):
@@ -172,7 +175,7 @@ class MeshPlacer():
                 ray_org = face_center + 0.05*edge_len_mean*ray_dir
                 ray_orgs = np.append(ray_orgs, ray_org, axis=0)
 
-        #conduct intersection test
+        # conduct intersection test
         intersection_results = self.ray_mesh_intersector.intersects_first(ray_orgs, ray_dirs)
 
         for face_id, intersect_id in zip(face_ids_ordered, intersection_results):
@@ -211,7 +214,7 @@ class MeshPlacer():
 
     def objects_in_face(self, frame, face_id):
         objs_valid = []
-        objs_frame = self.objects[frame.frame_id]
+        objs_frame = self.objects_imgs[frame.frame_id]
         vertex_ids = self.faces[face_id, :]
         face_vertices = self.vertices[vertex_ids, :]
         valid, pos = frame.project_triface(face_vertices)
@@ -219,7 +222,7 @@ class MeshPlacer():
         for i, row in objs_frame.iterrows():
             obj_center = np.array([row['x_c'], row['y_c']])
             if self.is_in_triangle(obj_center, pos):
-                objs_valid.append(obj_center)
+                objs_valid.append({'type': row['type'], 'img_xy': obj_center})
 
         return objs_valid
 
@@ -246,14 +249,35 @@ class MeshPlacer():
     def backproject_objects_to_mesh(self):
         for frame_id in self.objects_assigned:
             frame = self.frame_from_id(frame_id)
-            cam_center = frame.Twc[0:3, 3]
+            cam_center = frame.Twc[0:3, 3].reshape((1, 3))
             ray_orgs = np.empty((0, 3))
             ray_dirs = np.empty((0, 3))
+            ray_to_obj = []
 
             for face_id in self.objects_assigned[frame_id]:
                 for obj in self.objects_assigned[frame_id][face_id]:
-                    pt_world = frame.backproject(obj[0], obj[1], 1.0)
-                    ray_orgs = np.append(ray_orgs, cam_center.reshape((1, 3)), axis=0)
+                    ray_to_obj.append(obj)
+                    img_xy = obj['img_xy']
+                    pt_world = frame.backproject(img_xy[0], img_xy[1], 0.05)
+                    #pdb.set_trace()
+                    ray_dir = pt_world.reshape((1, 3)) - cam_center
+                    ray_dirs = np.append(ray_dirs, ray_dir, axis=0)
+                    ray_orgs = np.append(ray_orgs, cam_center, axis=0)
+
+            locations, ray_idx, face_ids = self.ray_mesh_intersector.intersects_location(ray_orgs, ray_dirs, multiple_hits=False)
+            for loc, ray_id in zip(locations, ray_idx):
+                self.objects_world.append({'x_world': loc, 'type': ray_to_obj[ray_id]['type']})
+
+    def write_placed_objects(self, out_path):
+        fout = open(out_path, 'w')
+        for obj in self.objects_world:
+            fout.write('{:f}'.format(obj['type']))
+            for x in obj['x_world']:
+                fout.write('\t{:f}'.format(x))
+            fout.write('\n')
+
+        fout.close()
+
 
     def generate_frame_from_id_dict(self, frames):
         frame_from_id = {}
@@ -406,7 +430,7 @@ class MeshPlacer():
                 for obj in self.objects_assigned[frame_id][face]:
                    # print('obj: {}'.format(type(obj)))
                    # print('obj[0]: {}, obj[1]: {}'.format(obj[0], obj[1]))
-                    img = cv2.circle(img, obj.astype(np.int32), 5, color, thickness=3)
+                    img = cv2.circle(img, obj['img_xy'].astype(np.int32), 5, color, thickness=3)
 
             outpath = output_folder + frame.label + '_assigned_objects.jpg'
             cv2.imwrite(outpath, img)
