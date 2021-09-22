@@ -6,12 +6,11 @@ import pdb
 def all_binary_permutations(n):
    return [list(map(int, seq)) for seq in itertools.product("01", repeat=n)]
 
-
 class Camera:
     """represents a projective camera using "OpenCV model", radial and tangential distortion """
     def __init__(self):
         self.id = []  
-        self.dim = [] 	 #image dimensions
+        self.dim = [] 	# image dimensions
         self.K = []		# calibration matrix
         self.fx = []  	# focal lengths - x and y directions, pixels
         self.fy = []
@@ -26,8 +25,8 @@ class Camera:
     def project(self, x_cam):
         """ projects a homogenous point in camera coordinates into the camera image
             returns a boolean indicating whether the point projected into the image and the image coordinates (regardless of whether the point is in the image)"""
-        #pinhole projection for sanity check
-        x_pinhole = np.matmul(self.K, x_cam[0:3,:])
+        # pinhole projection for sanity check
+        x_pinhole = np.matmul(self.K, x_cam[0:3, :])
         x_pinhole = np.array([x_pinhole[0]/x_pinhole[2], x_pinhole[1]/x_pinhole[2]])
 
         BUFFER = 0.5
@@ -37,26 +36,26 @@ class Camera:
         if z_pos and in_image_pinhole:  # point must be in front of camera
             sanity_check = True
 
-        #distortion corrections
+        # distortion corrections
         x_inh = [x_cam[0] / x_cam[2], x_cam[1] / x_cam[2]]
         r = np.linalg.norm(np.array(x_inh))  # radial distance for distortion corrections
 
-        xp = x_inh[0]  * (1 + self.k1 * r**2 + self.k2 * r**4 + self.k3 * r**6) + \
-                            (self.p1 * (r**2 + 2 * x_inh[0]**2) + 2 * self.p2 * x_inh[0] * x_inh[1])
+        xp = x_inh[0] * (1 + self.k1 * r**2 + self.k2 * r**4 + self.k3 * r**6) + \
+                        (self.p1 * (r**2 + 2 * x_inh[0]**2) + 2 * self.p2 * x_inh[0] * x_inh[1])
 
         yp =  x_inh[1] * (1 + self.k1 * r**2 + self.k2 * r**4 + self.k3 * r**6) + \
-                            (self.p2 * (r**2 + 2 *  x_inh[1]**2) + 2 * self.p1 *  x_inh[0] * x_inh[1])
+                         (self.p2 * (r**2 + 2 * x_inh[1]**2) + 2 * self.p1 * x_inh[0] * x_inh[1])
         x = self.cx + xp * self.fx
         y = self.cy + yp * self.fy
 
-        in_image = (0 < x < self.dim[0]) and (0 < y <  self.dim[1])
+        in_image = (0 < x < self.dim[0]) and (0 < y < self.dim[1])
         if in_image and sanity_check:
-            return True, np.append(x,y)
+            return True, np.append(x, y)
         else:
-            return False, np.append(x,y)
+            return False, np.append(x, y)
 
     def backproject(self, u, v, z):
-        '''backproject points u,v (col, row) in pixel coordinates into 3D at distance z'''
+        """ backproject points u,v (col, row) in pixel coordinates into 3D at distance z"""
         ud = (u - self.cx) / self.fx
         vd = (v - self.cy) / self.fy
         uc, vc = self.distortion_correction_oulu(ud, vd) # iteratively correct for radial distortion and tangential distortion
@@ -65,9 +64,9 @@ class Camera:
 
 
     def distortion_correction_oulu(self, u_raw, v_raw):
-        '''for backprojection of pixel points. takes in distorted (real) focal length normalized coordinates in image (u/f, v/f) and
+        """ for backprojection of pixel points. takes in distorted (real) focal length normalized coordinates in image (u/f, v/f) and
         corrects these points to where they would occur without distortion; modified from J-Y Bouguet Camera Calibration Toolbox for Matlab,
-        based on Heikkila and Silven A four-step camera calibration procedure with implicit image correction 1997  '''
+        based on Heikkila and Silven A four-step camera calibration procedure with implicit image correction 1997  """
         N_ITER = 20
 
         k1 = self.k1 #radial distortion coeffs
@@ -86,7 +85,6 @@ class Camera:
             dx2 = p1 * (r_2 + 2 * x[1]**2) + 2 * p2 * x[0] * x[1]
             delta_x = np.array([dx1, dx2])
             x = (x_dist - delta_x) / k_radial
-         #   print('i: {}, x: {}'.format(i, x))
 
         return x[0], x[1]
 
@@ -179,14 +177,12 @@ class Frame:
 
         self.P = np.matmul(self.camera.K, self.Tcw[0:3, :])
 
-
-
     def project(self, x_world):
         """ project point in world coordinates into image.
         the point will be converted to homogenous coordinates if it's not already; cooperates with camera
         returns a boolean indicating whether the point projected into the image and the image coordinates (regardless of whether the point is in the image)"""
 
-        if x_world.shape != (4,1):
+        if x_world.shape != (4, 1):
             x_world = np.append(x_world, 1.000)  # make homogeneous
             x_world = x_world.reshape((4, 1))
         x_cam = np.matmul(self.Tcw, x_world)
@@ -196,7 +192,7 @@ class Frame:
         """ project point in world coordinates into image using pinhole camera model
         returns a boolean indicating whether the point projected into the image and the image coordinates (regardless of whether the point is in the image)"""
 
-        if x_world.shape != (4,1):
+        if x_world.shape != (4, 1):
             x_world = np.append(x_world, 1.000)  # make homogeneous
             x_world = x_world.reshape((4, 1))
 
@@ -207,7 +203,7 @@ class Frame:
         return in_image, x_img, z_pos
 
     def backproject(self, u, v, z):
-        '''backproject pixel coordinates u, v into world coordinates at distance z'''
+        """ backproject pixel coordinates u, v into world coordinates at distance z  """
         x_cam = self.camera.backproject(u, v, z)
         x_cam = np.append(x_cam, 1.000)
         x_cam = x_cam.reshape((4, 1))
@@ -217,13 +213,10 @@ class Frame:
     def aabb_is_visible(self, bounds):
         """ determines if any portion of a 3D aabb bounding box (defined by it's lower and upper bounds)
              is visible in the frame"""
-        #bound = list(zip(lb,ub))
         corners = []
         for perm in all_binary_permutations(3):
             corner = [ax[i] for i, ax in zip(perm, bounds)]
             corner = np.array(corner)
-         #   corner = np.append(corner, 1.000)
-         #   corner = corner.reshape((4,1))
             corners.append(corner)
 
         w = self.camera.dim[0]
@@ -298,21 +291,9 @@ class Frame:
         for vertex in face_vertices:
             val, xy = self.project(vertex)
             valid.append(val)
-            #pos.append(xy)
             pos = np.append(pos, np.expand_dims(xy, axis=0), axis=0)
 
         if(sum(valid) ==3):
             return True, pos
         else:
             return False, pos
-
-
-
-
-
-
-
-
-
-
-

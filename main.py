@@ -1,4 +1,3 @@
-import numpy as np
 import trimesh
 import xml.etree.ElementTree as ET
 from Camera import Frame, Camera
@@ -6,10 +5,7 @@ from MeshPlacer import MeshPlacer
 from aabbtree import AABBTree
 import time
 
-""" script to label marsh mesh from images - uses semantically segmented images for class (plant) labeling and raw
-     images for coloring mesh for visualizations """
-
-MODE = 'Color_Class'  #options 'Label_Interval', 'Label_All', 'Color_True', 'Color_Class'
+""" script to place objects detected in images on mesh  """
 
 mesh_file = './data/Sapelo_202106_run10/mesh.ply'
 camera_file = './data/Sapelo_202106_run10/agisoft_cameras_Imaging.xml'
@@ -19,7 +15,7 @@ image_dir = './data/Sapelo_202106_run10/imaging/'
 object_info = {
     'dir': './data/Sapelo_202106_run10/snail_preds/',
     'ext': '_preds.txt'
-#    fmt:
+
 }
 
 def load_mesh():
@@ -39,16 +35,15 @@ def load_agisoft_data():
     for chunk in chunks:
         cameras_this_chunk = chunk.find('sensors')  #my terminolgy 'camera' = agisoft 'sensor'
         for camera in cameras_this_chunk:
-            cam = Camera()
-            cam.load_agisoft(camera, version)
-            cameras[cam.id] = cam
+            _camera = Camera()
+            _camera.load_agisoft(camera, version)
+            cameras[_camera.id] = _camera
 
         frames_this_chunk = chunk.find('cameras') #my terminolgy 'frame' = agisoft 'camera'
         for frame in frames_this_chunk:
             _frame = Frame()
             _frame.load_agisoft(frame, cameras)
             frames.append(_frame)
-
 
     return cameras, frames
 

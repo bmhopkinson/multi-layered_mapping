@@ -7,10 +7,17 @@ def chunks(lst, n):
         yield lst[i:i + n]
 
 def run_concurrent(context, func=[], data_in=[], args=[], n_workers=2):
+    """concurrently run a function (func) on data (data_in) with arguments (args) in a context (e.g. object that owns
+        the function). n_workers specifies number of multiprocessing jobs to start
+
+        func must have the following interface:
+        func(chunk_of_data_in, results_dict, optional_args)
+        """
+
     if context.manager is None:
         context.manager = mp.Manager()
-    results = context.manager.dict()  # this will hold info about which faces are visible in which frames:  key 'faceid_frame_id', value: dist from center of projected face to camera projection center,
-    # this structure is simpler to deal with in multiprocesing context and will be postproccesed later
+    results = context.manager.dict()    # results dictionary - note b/c of python multiprocessing constraints only option is
+                                        # to dump data into this dictionary, different processes aren't notified when it is modified
     jobs = []
     for chunk in chunks(data_in, math.ceil(len(data_in) / n_workers)):
         j = mp.Process(target=func,
@@ -24,7 +31,22 @@ def run_concurrent(context, func=[], data_in=[], args=[], n_workers=2):
     return results.copy()  # convert to normal dictionary
 
 def run_singlethreaded(context, func=[], data_in=[], args=[], n_workers=1):
-    ''' run a function single threaded, has same interface as run_concurrent for easy swapping'''
+    """ run a function single threaded, has same interface as run_concurrent for easy swapping"""
     results = {}
     results = func(data_in, results, args)
     return results
+
+def collate_results(raw_ds, key_parser):
+    """takes raw dictionaries with multiple observations per face (different frames) and collates them by face,
+    uses key_parser to split keys of raw dictionary into new desired higher level grouping. for example raw dict 
+    may have keys as 'frameid_faceid' and key_parser splits off frame_id as the new grouping """
+    collated_ds = {}
+    for instance in raw_ds:
+        m = key_parser.search(instance)
+        new_key = int(m.group(1))
+        if new_key in collated_ds:
+            collated_ds[new_key].append(raw_ds[instance])
+        else:
+            collated_ds[new_key] = [raw_ds[instance]]
+
+    return collated_ds
