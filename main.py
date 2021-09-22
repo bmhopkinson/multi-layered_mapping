@@ -9,7 +9,7 @@ import time
 """ script to label marsh mesh from images - uses semantically segmented images for class (plant) labeling and raw
      images for coloring mesh for visualizations """
 
-MODE = 'Label_All'  #options 'Label_Interval', 'Label_All', 'Color_True', 'Color_Class'
+MODE = 'Color_Class'  #options 'Label_Interval', 'Label_All', 'Color_True', 'Color_Class'
 
 mesh_file = './data/Sapelo_202106_run10/mesh.ply'
 camera_file = './data/Sapelo_202106_run10/agisoft_cameras_Imaging.xml'
