@@ -26,18 +26,17 @@ class MeshPlacer():
         certain time consuming steps can be accelerated with multiprocessing by setting self.run_function = h.run_concurrent.
         for debugging this can be swapped with h.run_singlethreaded
     """
-    def __init__(self, frames=None, mesh=None, tree=None, obj_info={}, img_dir=[], n_workers=1):
+    def __init__(self, frames=None, mesh=None, tree=None,  mode='face_allocation', obj_info={}, img_dir=[], n_workers=1):
         self.frames = frames
         self.frame_from_id_dict = self.generate_frame_from_id_dict(frames)
         self.mesh = copy.deepcopy(mesh)
         self.ray_mesh_intersector = trimesh.ray.ray_pyembree.RayMeshIntersector(self.mesh)  #the embree raytracer is much faster but isn't automatically installed by trimesh
         self.vertices = []
         self.faces = []
-        self.faces_assigned = {}    # faces assigned to frames (key: frame_id, value: assigned faces)
         self.tree = tree            # aabb tree
         self.objects_imgs = {}      # raw object data - all objects in each frame (key: frame_id, value: panda table of object data)
-        self.objects_assigned = {}  # objects assigned to frames - only objects within bounds of assigned faces
         self.objects_world = []     # objects backprojected into world coordinates. each item in list has world position 'x_world' and class type 'type'
+        self.mode = mode            # approach to avoiding duplicate objects
         self.img_dir = img_dir
         self.n_workers = n_workers
         self.manager = None   # data structure manager for multiprocessing operations
@@ -58,8 +57,9 @@ class MeshPlacer():
         for frame in self.frames:
             obj_file = obj_info['dir'] + frame.label + obj_info['ext']
             frame_data = pandas.read_csv(obj_file, sep='\t')
-            frame_data['x_c'] = (frame_data['x_min'] + frame_data['x_max']) / 2
-            frame_data['y_c'] = (frame_data['y_min'] + frame_data['y_max']) / 2
+            if 'x_c' not in frame_data.columns:
+                frame_data['x_c'] = (frame_data['x_min'] + frame_data['x_max']) / 2
+                frame_data['y_c'] = (frame_data['y_min'] + frame_data['y_max']) / 2
             object_data[frame.frame_id] = frame_data
 
         return object_data
@@ -69,9 +69,23 @@ class MeshPlacer():
         if stop is None:  #this means process all frames
             stop = len(self.frames)
 
-        self.allocate_faces_to_frames(start, stop)
-        self.find_objects_in_faces()
-        self.backproject_objects_to_mesh()
+        if self.mode == 'face_allocation':
+            faces_assigned = self.allocate_faces_to_frames(start, stop)
+            print('allocated faces to frames')
+            objects_to_place = self.find_objects_in_faces(faces_assigned)
+            print('found objects in faces')
+        elif self.mode == 'unique_id':
+            objects_to_place = self.objects_for_uniqueid_placement()
+        else:
+            print('MODE NOT RECOGNIZED!')
+
+        print('identified objects to place on mesh')
+
+        self.backproject_objects_to_mesh(objects_to_place)
+
+        if self.mode == 'unique_id':
+            self.objects_world = self.merge_duplicate_objects()
+
         self.write_placed_objects(outfile)
 
     def allocate_faces_to_frames(self, start=0, stop=None):
@@ -87,7 +101,7 @@ class MeshPlacer():
         # for each visible face determine distances from center in all frames it is viewed in, this is slow,
         # so can be accelerated by running concurrently
         results = self.run_function(self, self.visible_face_distances, frames_selection, args=[], n_workers=self.n_workers)
-        face_views_collated = h.collate_results(results, parse_cover_key )
+        face_views_collated = h.collate_results(results, parse_cover_key)
 
        # self.visualize_face_correspondences(face_views_collated, n=10)
 
@@ -109,8 +123,7 @@ class MeshPlacer():
 
         self.visualize_face_assignments(faces_assigned_frame, n=40)
 
-        self.faces_assigned = faces_assigned_frame
-        return faces_assigned_frame
+        return faces_assigned_frame   # faces assigned to frames (key: frame_id, value: assigned faces)
 
     def visible_face_distances(self, frames, results, args):
         """ determines distances from image center for faces visible in frames """
@@ -199,25 +212,28 @@ class MeshPlacer():
 
         return face_ids
 
-    def find_objects_in_faces(self):
+    def find_objects_in_faces(self, faces_assigned):
         """ for each frame that has assigned faces, finds objects whose center is within assigned faces """
-        frame_ids = list(self.faces_assigned.keys())
-        self.objects_assigned = self.run_function(self, self._find_objects_in_faces,  frame_ids, args=[], n_workers=self.n_workers)
-        self.visualize_object_assignments(n=40)
-        return self.objects_assigned
+        frame_ids = list(faces_assigned.keys())
+        objects_assigned = self.run_function(self, self._find_objects_in_faces,  frame_ids, args=[faces_assigned], n_workers=self.n_workers)
+        self.visualize_object_assignments(objects_assigned, n=40)
+        return objects_assigned
 
     def _find_objects_in_faces(self, frame_ids, results, args):
         """ working target for find_objects_in_faces
             steps through frames and calls 'objects_in_face()' on each face assigned to frame, collecting results"""
 
+        faces_assigned = args[0]
+
         for frame_id in frame_ids:
             #results[frame_id] = {}
-            results_frame = {}
+         #   results_frame = {}
+            results_frame = []
             frame = self.frame_from_id(frame_id)
-            for face in self.faces_assigned[frame_id]:
+            for face in faces_assigned[frame_id]:
                 objs = self.objects_in_face(frame, face)
                 if objs:
-                    results_frame[face] = objs
+                    results_frame.extend(objs)
 
             results[frame_id] = results_frame
 
@@ -237,7 +253,7 @@ class MeshPlacer():
         for i, row in objs_frame.iterrows():   # should convert triangluar bounds to square and throw out any objects not within this square (but runs fast enough right now)
             obj_center = np.array([row['x_c'], row['y_c']])
             if self.is_in_triangle(obj_center, pos):
-                objs_valid.append({'type': row['type'].astype(int), 'img_xy': obj_center})
+                objs_valid.append({'type': row['type'].astype(int), 'img_xy': obj_center, 'unique_id': None, 'face_id': face_id})
 
         return objs_valid
 
@@ -261,19 +277,32 @@ class MeshPlacer():
         res = (pt[0] - tri_2[0]) * (tri_1[1] - tri_2[1]) - (tri_1[0] - tri_2[0]) * (pt[1] - tri_2[1])
         return res
 
-    def backproject_objects_to_mesh(self):
+    def objects_for_uniqueid_placement(self):
+        objects_to_place = {}
+        for frame_id in self.objects_imgs:
+            _objects = []
+            for i, row in self.objects_imgs[frame_id].iterrows():
+                obj_center = np.array([row['x_c'], row['y_c']])
+                _objects.append({'type': row['type'].astype(int), 'img_xy': obj_center, 'unique_id': row['unique_id'].astype(int)})
+
+            objects_to_place[frame_id] = _objects
+
+        return objects_to_place
+
+
+    def backproject_objects_to_mesh(self, objects_to_place):
         """ takes each assigned object and backprojects it onto the mesh
             this could be parallelized but right now it doesn't take very long (~1000s of objects to backproject)
         """
-        for frame_id in self.objects_assigned:
+        for frame_id in objects_to_place:
             frame = self.frame_from_id(frame_id)
             cam_center = frame.Twc[0:3, 3].reshape((1, 3))
             ray_orgs = np.empty((0, 3))
             ray_dirs = np.empty((0, 3))
             ray_to_obj = []
 
-            for face_id in self.objects_assigned[frame_id]:
-                for obj in self.objects_assigned[frame_id][face_id]:
+            for obj in objects_to_place[frame_id]:
+   #             for obj in objects_to_place[frame_id][face_id]:
                     ray_to_obj.append(obj)
                     img_xy = obj['img_xy']
                     pt_world = frame.backproject(img_xy[0], img_xy[1], 0.05)
@@ -284,12 +313,38 @@ class MeshPlacer():
 
             locations, ray_idx, face_ids = self.ray_mesh_intersector.intersects_location(ray_orgs, ray_dirs, multiple_hits=False)
             for loc, ray_id in zip(locations, ray_idx):
-                self.objects_world.append({'x_world': loc, 'type': ray_to_obj[ray_id]['type']})
+                self.objects_world.append({'x_world': loc, 'type': ray_to_obj[ray_id]['type'], 'unique_id': ray_to_obj[ray_id]['unique_id']})
+
+
+    def merge_duplicate_objects(self):
+        #collate objects by unique_id
+        objects_unique = {}
+        objects_merged = []
+        for obj in self.objects_world:
+            _id = obj['unique_id']
+            if _id in objects_unique:
+                objects_unique[_id].append(obj)
+            else:
+                objects_unique[_id] = [obj]
+
+        #merge by averaging 3D positions - object may no longer lie on mesh surface
+        for obj_id in objects_unique:
+            pos = np.empty((0, 3), dtype=np.float)
+            for instance in objects_unique[obj_id]:
+                pos = np.append(pos, np.expand_dims(instance['x_world'], axis=0), axis=0)  #may need np.expand_dims(instance['x_world'], axis=0)
+
+            pos_best = np.mean(pos, axis=0)
+            obj_merged = objects_unique[obj_id][0]  #all data in duplicate objects should be identical except position
+            obj_merged['x_world'] = pos_best
+            objects_merged.append(obj_merged)
+
+        return objects_merged
 
     def write_placed_objects(self, out_path):
         fout = open(out_path, 'w')
         for obj in self.objects_world:
-            fout.write('{:d}'.format(obj['type']))
+            fout.write('{:d}\t'.format(obj['type']))
+            fout.write('{:d}'.format(obj['unique_id']))
             for x in obj['x_world']:
                 fout.write('\t{:f}'.format(x))
             fout.write('\n')
@@ -400,14 +455,14 @@ class MeshPlacer():
             i = i + 1
 
 
-    def visualize_object_assignments(self, n=10):
+    def visualize_object_assignments(self, objects_assigned, n=10):
         # prepare output directory
         output_folder = './output/'
         if not os.path.isdir(output_folder):
             os.mkdir(output_folder)
 
         i = 0
-        for frame_id in self.objects_assigned:
+        for frame_id in objects_assigned:
             if i > n:
                 break
 
@@ -416,8 +471,8 @@ class MeshPlacer():
             img = cv2.imread(img_path)
 
             # draw projected assigned faces on img
-            for face in self.objects_assigned[frame_id]:
-                vertex_ids = self.faces[face, :]
+            for obj in objects_assigned[frame_id]:
+                vertex_ids = self.faces[obj['face_id'], :]
                 face_vertices = self.vertices[vertex_ids, :]
                 valid, pos = frame.project_triface(face_vertices)
 
@@ -428,11 +483,7 @@ class MeshPlacer():
                 pos = pos.astype(np.int32)
                 pos = pos.reshape(-1, 1, 2)
                 img = cv2.polylines(img, [pos], closed, color, thickness)
-
-                for obj in self.objects_assigned[frame_id][face]:
-                   # print('obj: {}'.format(type(obj)))
-                   # print('obj[0]: {}, obj[1]: {}'.format(obj[0], obj[1]))
-                    img = cv2.circle(img, obj['img_xy'].astype(np.int32), 5, color, thickness=3)
+                img = cv2.circle(img, obj['img_xy'].astype(np.int32), 5, color, thickness=3)
 
             outpath = output_folder + frame.label + '_assigned_objects.jpg'
             cv2.imwrite(outpath, img)
