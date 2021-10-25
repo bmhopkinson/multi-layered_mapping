@@ -9,12 +9,13 @@ import time
 """ script to label marsh mesh from images - uses semantically segmented images for class (plant) labeling and raw
      images for coloring mesh for visualizations """
 
-MODE = 'Color_Class'  #options 'Label_Interval', 'Label_All', 'Color_True', 'Color_Class'
+MODE = 'Color_True'  #options 'Label_Interval', 'Label_All', 'Color_True', 'Color_Class'
 
-mesh_file = './data/Sapelo_202106_run10/mesh.ply'
-camera_file = './data/Sapelo_202106_run10/agisoft_cameras_Imaging.xml'
-image_classcolor_folder = './data/Sapelo_202106_run10/imaging_preds_20210909_model/'
-image_truecolor_folder ='./data/Sapelo_202106_run10/imaging/'
+mesh_file = './data/Sapelo_202106_run13/mesh_fine.ply'
+camera_file = './data/Sapelo_202106_run13/agisoft_cameras_Imaging.xml'
+#image_classcolor_folder = './data/Sapelo_202106_run10/imaging_preds_20210909_model/'
+image_truecolor_folder ='./data/Sapelo_202106_run13/imaging/'
+image_folder = image_truecolor_folder
 
 
 def load_mesh():
@@ -75,7 +76,7 @@ if __name__ == '__main__':
 
     cameras, frames = load_agisoft_data()
 
-    labeler = MeshLabeler(frames=frames, mesh=mesh, tree=tree, img_dir=image_classcolor_folder, n_workers=20)
+    labeler = MeshLabeler(frames=frames, mesh=mesh, tree=tree, img_dir=image_folder, n_workers=20)
 
     start = time.perf_counter()
     if MODE == 'Label_All':
@@ -85,9 +86,10 @@ if __name__ == '__main__':
         labels, mesh = labeler.from_frame_interval(0, 20)
         labeler.write_labels(labels, 'fractional_cover_by_face.txt')
     elif MODE == 'Color_Class':
-        mesh = labeler.color_faces_from_images_all(image_classcolor_folder, '_pred.png', remove_color_other)
+        mesh = labeler.color_faces_from_images_all(image_folder, '_pred.png', remove_color_other)
     elif MODE == 'Color_True':
-        mesh = labeler.color_faces_from_images_all(image_truecolor_folder, '.jpg')
+        mesh = labeler.color_faces_from_images_all(image_folder, '.jpg')
+        #mesh = labeler.color_faces_from_images_interval(0, 20, image_folder, '.jpg')
     else:
         print("Error MODE not recognized.")
 

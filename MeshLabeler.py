@@ -183,28 +183,31 @@ class MeshLabeler():
 
         fout.close()
 
-    def color_faces_from_images_interval(self, start, stop, image_folder, ext, color_mod=None):
+    def color_faces_from_images_interval(self, start, stop, image_folder, ext, color_modifier=None, mode='Avg'):
         """ frontend for _color_faces_from_images() - colors mesh faces from frames in (start, stop) interval.
         breaks those frames into chunks and doles out to multiprocessing targets """
         frames_selection = self.frames[start:stop]
 
-        args = [image_folder, ext, color_mod]
+        args = [image_folder, ext, color_modifier]
         face_colors_raw = self.run_function(self, self._color_faces_from_images, frames_selection, args=args,
                                       n_workers=self.n_workers)
-        face_colors = h.collate_results(face_colors_raw, parse_cover_key)
+        face_colors_allviews = h.collate_results(face_colors_raw, parse_cover_key)
 
-        face_colors_avg = {}  # face_id: averaged_fractional_cover (over all observations of face)
+        face_colors = {}  # face_id: averaged_fractional_cover (over all observations of face)
+        for face in face_colors_allviews:
+            if mode == 'Avg':
+                face_colors[face] = np.mean(face_colors_allviews[face], axis=0)
+            elif mode == 'Single':
+                face_colors[face] = face_colors_allviews[face][0, :]
+
         for face in face_colors:
-            face_colors_avg[face] = np.mean(face_colors[face], axis=0)
-
-        for face in face_colors_avg:
-            colors = face_colors_avg[face]
+            colors = face_colors[face]
             self.mesh.visual.face_colors[face] = np.array([colors[0], colors[1], colors[2], 255], dtype=np.uint8)
 
         fout = open('face_colors.txt', 'w')
         for face in face_colors:
             fout.write('{:d}'.format(face))
-            for c in face_colors_avg[face]:
+            for c in face_colors[face]:
                 fout.write('\t{:d}'.format(int(c)))
             fout.write('\n')
 
@@ -216,7 +219,7 @@ class MeshLabeler():
         """ colors all mesh faces visible in frames based on images in image_folder """
         start = 0
         stop = len(self.frames)
-        return self.color_faces_from_images_interval(start, stop, image_folder, ext ,color_mod=color_mod)
+        return self.color_faces_from_images_interval(start, stop, image_folder, ext, color_modifier=color_mod)
 
     def _color_faces_from_images(self, frames, face_colors, args=[]):
         """ colors (rgb) each visible face of the mesh with the average color in associated images whose poses

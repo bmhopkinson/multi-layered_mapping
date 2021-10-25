@@ -51,3 +51,4 @@ def collate_results(raw_ds, key_parser):
             collated_ds[new_key] = np.array(raw_ds[instance], ndmin=2)
 
     return collated_ds
+
