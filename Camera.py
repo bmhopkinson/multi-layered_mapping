@@ -22,6 +22,68 @@ class Camera:
         self.p1 = 0.000  # tangential distortion coeffs
         self.p2 = 0.000
 
+    @classmethod
+    def load_agisoft(cls, xml_data, version):
+        """" load camera parameters from xml in agisoft format """
+
+        _camera = cls()
+        _camera.id = xml_data.attrib['id']
+
+        # extract image dimensions
+        dim = xml_data.find('resolution')
+        _camera.dim = [float(dim.attrib['width']), float(dim.attrib['height'])]
+
+        # process calibration, distortion parameters are present in variable numbers
+        calib = xml_data.find('calibration')
+        K = np.eye(3, dtype=float)
+
+        if version == '1.4.0':
+            fx = float(calib.find('f').text)
+            fy = fx
+        else:
+            fx = float(calib.find('fx').text)
+            fy = float(calib.find('fy').text)
+
+        K[0, 0] = fx
+        K[1, 1] = fy
+        _camera.fx = fx
+        _camera.fy = fy
+
+        cx = float(calib.find('cx').text)
+        cy = float(calib.find('cy').text)
+        if version == '1.4.0':
+            cx = cx + 0.5 * _camera.dim[0]
+            cy = cy + 0.5 * _camera.dim[1]
+
+        K[0, 2] = cx
+        K[1, 2] = cy
+        _camera.cx = cx
+        _camera.cy = cy
+        _camera.K = K
+
+        # process distortion parameters, first radial distorion parameters (ks), then tangential (ps)
+        k1 = calib.find('k1')
+        if k1 is not None:
+            _camera.k1 = float(k1.text)
+
+        k2 = calib.find('k2')
+        if k2 is not None:
+            _camera.k2 = float(k2.text)
+
+        k3 = calib.find('k3')
+        if k3 is not None:
+            _camera.k3 = float(k3.text)
+
+        p1 = calib.find('p1')
+        if p1 is not None:
+            _camera.p1 = float(p1.text)
+
+        p2 = calib.find('p2')
+        if p2 is not None:
+            _camera.p2 = float(p2.text)
+
+        return _camera
+
     def project(self, x_cam):
         """ projects a homogenous point in camera coordinates into the camera image
             returns a boolean indicating whether the point projected into the image and the image coordinates (regardless of whether the point is in the image)"""
@@ -58,7 +120,7 @@ class Camera:
         """ backproject points u,v (col, row) in pixel coordinates into 3D at distance z"""
         ud = (u - self.cx) / self.fx
         vd = (v - self.cy) / self.fy
-        uc, vc = self.distortion_correction_oulu(ud, vd) # iteratively correct for radial distortion and tangential distortion
+        uc, vc = self.distortion_correction_oulu(ud, vd)  # iteratively correct for radial distortion and tangential distortion
     #    pdb.set_trace()
         return np.array([uc*z, vc*z, z])
 
@@ -88,65 +150,6 @@ class Camera:
 
         return x[0], x[1]
 
-    def load_agisoft(self, xml_data, version):
-        """" load camera parameters from xml in agisoft format """
-
-        self.id = xml_data.attrib['id']
-
-        # extract image dimensions
-        dim = xml_data.find('resolution')
-        self.dim = [float(dim.attrib['width']), float(dim.attrib['height'])]
-
-        # process calibration, distortion parameters are present in variable numbers
-        calib = xml_data.find('calibration')
-        K = np.eye(3, dtype=float)
-
-        fx = []
-        fy = []
-        if version == '1.4.0':
-            fx = float(calib.find('f').text)
-            fy = fx
-        else:
-            fx = float(calib.find('fx').text)
-            fy = float(calib.find('fy').text)
-
-        K[0, 0] = fx
-        K[1, 1] = fy
-        self.fx = fx
-        self.fy = fy
-
-        cx = float(calib.find('cx').text)
-        cy = float(calib.find('cy').text)
-        if version == '1.4.0':
-            cx = cx + 0.5 * self.dim[0]
-            cy = cy + 0.5 * self.dim[1]
-
-        K[0, 2] = cx
-        K[1, 2] = cy
-        self.cx = cx
-        self.cy = cy
-        self.K = K
-
-        # process distortion parameters, first radial distorion parameters (ks), then tangential (ps)
-        k1 = calib.find('k1')
-        if not k1 is None:
-            self.k1 = float(k1.text)
-
-        k2 = calib.find('k2')
-        if not k2 is None:
-            self.k2 = float(k2.text)
-
-        k3 = calib.find('k3')
-        if not k3 is None:
-            self.k3 = float(k3.text)
-
-        p1 = calib.find('p1')
-        if not p1 is None:
-            self.p1 = float(p1.text)
-
-        p2 = calib.find('p2')
-        if not p2 is None:
-            self.p2 = float(p2.text)
 
 class Frame:
     """ represents a image and its pose in world coordinates"""
@@ -161,21 +164,23 @@ class Frame:
         self.Tcw = []  # world to camera transform
         self.Twc = []   #camera to world transform
 
-    def load_agisoft(self, xml_data, cameras):
+    @classmethod
+    def load_agisoft(cls, xml_data, cameras):
         """ load frame data from xml file in agisoft format """
-     
-        self.frame_id = xml_data.attrib['id']
-        self.label = xml_data.attrib['label']
-        self.camera_id = xml_data.attrib['sensor_id']  #in agisoft terminology a sensor is what's called a camera here
-        self.camera = cameras[self.camera_id]
-        self.enabled = xml_data.attrib['enabled']
+        _frame = cls()
+        _frame.frame_id = xml_data.attrib['id']
+        _frame.label = xml_data.attrib['label']
+        _frame.camera_id = xml_data.attrib['sensor_id']  #in agisoft terminology a sensor is what's called a camera here
+        _frame.camera = cameras[_frame.camera_id]
+        _frame.enabled = xml_data.attrib['enabled']
 
         transform = xml_data.find('transform')
         tdata_raw = [float(elm) for elm in transform.text.split()]
-        self.Twc = np.array(tdata_raw).reshape((4,4))
-        self.Tcw = np.linalg.inv(self.Twc)
+        _frame.Twc = np.array(tdata_raw).reshape((4, 4))
+        _frame.Tcw = np.linalg.inv(_frame.Twc)
 
-        self.P = np.matmul(self.camera.K, self.Tcw[0:3, :])
+        _frame.P = np.matmul(_frame.camera.K, _frame.Tcw[0:3, :])
+        return _frame
 
     def project(self, x_world):
         """ project point in world coordinates into image.

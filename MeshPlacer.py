@@ -26,7 +26,7 @@ class MeshPlacer():
         certain time consuming steps can be accelerated with multiprocessing by setting self.run_function = h.run_concurrent.
         for debugging this can be swapped with h.run_singlethreaded
     """
-    def __init__(self, frames=None, mesh=None, tree=None,  mode='face_allocation', obj_info={}, img_dir=[], n_workers=1):
+    def __init__(self, frames, mesh=None, tree=None,  mode='face_allocation', obj_info=None, img_dir=None, n_workers=1):
         self.frames = frames
         self.frame_from_id_dict = self.generate_frame_from_id_dict(frames)
         self.mesh = copy.deepcopy(mesh)
@@ -37,14 +37,18 @@ class MeshPlacer():
         self.objects_imgs = {}      # raw object data - all objects in each frame (key: frame_id, value: panda table of object data)
         self.objects_world = []     # objects backprojected into world coordinates. each item in list has world position 'x_world' and class type 'type'
         self.mode = mode            # approach to avoiding duplicate objects
-        self.img_dir = img_dir
         self.n_workers = n_workers
         self.manager = None   # data structure manager for multiprocessing operations
-        self.run_function = h.run_singlethreaded
+        self.run_function = h.run_concurrent
 
         if self.mesh is not None:
             self.vertices = mesh.vertices.view(np.ndarray)
             self.faces = mesh.faces.view(np.ndarray)
+
+        if img_dir is None:
+            self.img_dir = './'
+        else:
+            self.img_dir = img_dir
 
         if obj_info:
             self.objects_imgs = self.load_objects(obj_info)
@@ -101,7 +105,7 @@ class MeshPlacer():
 
         # for each visible face determine distances from center in all frames it is viewed in, this is slow,
         # so can be accelerated by running concurrently
-        results = self.run_function(self, self.visible_face_distances, frames_selection, args=[], n_workers=self.n_workers)
+        results = self.run_function(self, self.visible_face_distances, frames_selection, n_workers=self.n_workers)
         face_views_collated = h.collate_results(results, parse_cover_key)
 
        # self.visualize_face_correspondences(face_views_collated, n=10)
@@ -347,7 +351,10 @@ class MeshPlacer():
         fout = open(out_path, 'w')
         for obj in self.objects_world:
             fout.write('{:d}\t'.format(obj['type']))
-            fout.write('{:d}'.format(obj['unique_id']))
+
+            if obj['unique_id'] is not None:
+                fout.write('{:d}'.format(obj['unique_id']))
+
             for x in obj['x_world']:
                 fout.write('\t{:f}'.format(x))
             fout.write('\n')

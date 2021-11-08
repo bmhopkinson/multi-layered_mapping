@@ -7,30 +7,30 @@ import time
 
 """ script to place objects detected in images on mesh  """
 
-# mesh_file = './data/Sapelo_202106_run10/mesh.ply'
-# camera_file = './data/Sapelo_202106_run10/agisoft_cameras_Imaging.xml'
-#
-# image_dir = './data/Sapelo_202106_run10/imaging/'
-#
-# object_info = {
-#     'dir': './data/Sapelo_202106_run10/snail_preds/',
-#     'ext': '_preds.txt'
-#
-# }
-# mode = 'face_allocation'
+mesh_file = './data/Sapelo_202106_run10/mesh.ply'
+camera_file = './data/Sapelo_202106_run10/agisoft_cameras_Imaging.xml'
 
-
-mesh_file = './data/Sapelo_202110_run2_hyslam/mesh_imaging.ply'
-camera_file = './data/Sapelo_202110_run2_hyslam/agisoft_cameras_Imaging.xml'
-
-image_dir = []#'./data/Sapelo_202110_run3/imaging/'
+image_dir = './data/Sapelo_202106_run10/imaging/'
 
 object_info = {
-    'dir': './data/Sapelo_202110_run2_hyslam/AprilTags/',
-    'ext': '_tags.txt'
+    'dir': './data/Sapelo_202106_run10/snail_preds/',
+    'ext': '_preds.txt'
 
 }
-mode = 'unique_id'
+mode = 'face_allocation'
+
+
+# mesh_file = './data/Sapelo_202110_run2_hyslam/mesh_imaging.ply'
+# camera_file = './data/Sapelo_202110_run2_hyslam/agisoft_cameras_Imaging.xml'
+#
+# image_dir = []#'./data/Sapelo_202110_run3/imaging/'
+#
+# object_info = {
+#     'dir': './data/Sapelo_202110_run2_hyslam/AprilTags/',
+#     'ext': '_tags.txt'
+#
+# }
+# mode = 'unique_id'
 
 def load_mesh():
     mesh = trimesh.load_mesh(mesh_file)
@@ -49,14 +49,12 @@ def load_agisoft_data():
     for chunk in chunks:
         cameras_this_chunk = chunk.find('sensors')  #my terminolgy 'camera' = agisoft 'sensor'
         for camera in cameras_this_chunk:
-            _camera = Camera()
-            _camera.load_agisoft(camera, version)
+            _camera = Camera.load_agisoft(camera, version)
             cameras[_camera.id] = _camera
 
         frames_this_chunk = chunk.find('cameras') #my terminolgy 'frame' = agisoft 'camera'
         for frame in frames_this_chunk:
-            _frame = Frame()
-            _frame.load_agisoft(frame, cameras)
+            _frame = Frame.load_agisoft(frame, cameras)
             frames.append(_frame)
 
     return cameras, frames
@@ -64,16 +62,15 @@ def load_agisoft_data():
 
 if __name__ == '__main__':
 
-    mesh = load_mesh()
+    cameras, frames = load_agisoft_data()
 
+    mesh = load_mesh()
     if mode == 'face_allocation':
         tree = AABBTree()
         tree = tree.from_mesh_faces(mesh)
         print('finished constructing AABBtree for mesh')
     else:
         tree = []
-
-    cameras, frames = load_agisoft_data()
 
     object_placer = MeshPlacer(frames=frames, mesh=mesh, tree=tree, n_workers=8, mode=mode,
                                obj_info=object_info, img_dir=image_dir)
