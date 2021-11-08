@@ -2,12 +2,14 @@ import multiprocessing as mp
 import math
 import numpy as np
 
+
 def chunks(lst, n):
     """Yield successive n-sized chunks from lst."""
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
 
-def run_concurrent(context, func=[], data_in=[], args=[], n_workers=2):
+
+def run_concurrent(context, func, data_in, args=None, n_workers=2):
     """concurrently run a function (func) on data (data_in) with arguments (args) in a context (e.g. object that owns
         the function). n_workers specifies number of multiprocessing jobs to start
 
@@ -31,11 +33,13 @@ def run_concurrent(context, func=[], data_in=[], args=[], n_workers=2):
 
     return results.copy()  # convert to normal dictionary
 
-def run_singlethreaded(context, func=[], data_in=[], args=[], n_workers=1):
+
+def run_singlethreaded(context, func, data_in, args=None, n_workers=1):
     """ run a function single threaded, has same interface as run_concurrent for easy swapping"""
     results = {}
     results = func(data_in, results, args)
     return results
+
 
 def collate_results(raw_ds, key_parser):
     """takes raw dictionaries with multiple observations per face (different frames) and collates them by face,

@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 
 def extract_triangle_from_image(triangle, image):
-    """select only the portion of  prediction image within this triangle and covert rgb codes to class data"""
+    """select only the portion of  prediction image within this triangle"""
 
     # crop image to fit triangle and recompute triangle coordinates
     triangle = np.array(triangle, dtype=int)
@@ -24,7 +24,7 @@ def extract_triangle_from_image(triangle, image):
     return selection, tri_crop
 
 
-def maskrgb_to_class( mask, class_map):
+def maskrgb_to_class(mask, class_map):
     """ decode rgb mask to classes using class map"""
     h, w, channels = mask.shape[0], mask.shape[1], mask.shape[2]
     mask_out = -1 * np.ones((h, w), dtype=int)

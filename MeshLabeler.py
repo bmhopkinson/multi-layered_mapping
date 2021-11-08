@@ -29,7 +29,7 @@ class MeshLabeler():
     """ labels a mesh using registered image frames. search for mesh components visible in frame is  accelerated using aabb tree.
     class labels are typically from semantically segmented images which are decoded with a class map
     """
-    def __init__(self, frames=None, mesh=None, tree=None, img_dir=[], n_workers=1):
+    def __init__(self, frames, mesh, tree, img_dir, n_workers=1):
         self.frames = frames
         self.mesh = copy.deepcopy(mesh)
         self.ray_mesh_intersector = trimesh.ray.ray_pyembree.RayMeshIntersector(self.mesh)
@@ -56,7 +56,7 @@ class MeshLabeler():
             cover_avg[face] = np.mean(cover[face], axis=0)
 
         for face in cover_avg:   # color mesh based on one class for visualization purposes
-            color = int(255 * cover_avg[face][1])
+            color = int(255 * cover_avg[face][4])
             self.mesh.visual.face_colors[face] = np.array([255 - color, 255, 255 - color, 255], dtype=np.uint8)
 
         return cover_avg, self.mesh
