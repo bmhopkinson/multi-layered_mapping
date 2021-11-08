@@ -20,13 +20,13 @@ import time
 # mode = 'face_allocation'
 
 
-mesh_file = './data/Sapelo_202110_run3/mesh.ply'
-camera_file = './data/Sapelo_202110_run3/agisoft_cameras_Imaging.xml'
+mesh_file = './data/Sapelo_202110_run2_hyslam/mesh_imaging.ply'
+camera_file = './data/Sapelo_202110_run2_hyslam/agisoft_cameras_Imaging.xml'
 
 image_dir = []#'./data/Sapelo_202110_run3/imaging/'
 
 object_info = {
-    'dir': './data/Sapelo_202110_run3/AprilTags/',
+    'dir': './data/Sapelo_202110_run2_hyslam/AprilTags/',
     'ext': '_tags.txt'
 
 }

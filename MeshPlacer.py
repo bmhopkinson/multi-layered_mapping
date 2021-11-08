@@ -40,7 +40,7 @@ class MeshPlacer():
         self.img_dir = img_dir
         self.n_workers = n_workers
         self.manager = None   # data structure manager for multiprocessing operations
-        self.run_function = h.run_concurrent
+        self.run_function = h.run_singlethreaded
 
         if self.mesh is not None:
             self.vertices = mesh.vertices.view(np.ndarray)
@@ -48,6 +48,7 @@ class MeshPlacer():
 
         if obj_info:
             self.objects_imgs = self.load_objects(obj_info)
+            print('loaded object data')
 
 
     def load_objects(self, obj_info):
@@ -285,7 +286,8 @@ class MeshPlacer():
                 obj_center = np.array([row['x_c'], row['y_c']])
                 _objects.append({'type': row['type'].astype(int), 'img_xy': obj_center, 'unique_id': row['unique_id'].astype(int)})
 
-            objects_to_place[frame_id] = _objects
+            if _objects:
+                objects_to_place[frame_id] = _objects
 
         return objects_to_place
 
@@ -333,6 +335,7 @@ class MeshPlacer():
             for instance in objects_unique[obj_id]:
                 pos = np.append(pos, np.expand_dims(instance['x_world'], axis=0), axis=0)  #may need np.expand_dims(instance['x_world'], axis=0)
 
+            print('objid: {}, pos: {}'.format(obj_id, pos))
             pos_best = np.mean(pos, axis=0)
             obj_merged = objects_unique[obj_id][0]  #all data in duplicate objects should be identical except position
             obj_merged['x_world'] = pos_best
