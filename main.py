@@ -1,8 +1,10 @@
 import trimesh
 import xml.etree.ElementTree as ET
-from Camera import Frame, Camera
+from pycamgeom.camera import Camera
+from pycamgeom.frame import Frame
+from pycamgeom.aabbtree import AABBTree
 from MeshPlacer import MeshPlacer
-from aabbtree import AABBTree
+
 import time
 
 """ script to place objects detected in images on mesh  """
@@ -28,19 +30,18 @@ mode = 'face_allocation'
 # object_info = {
 #     'dir': './data/Sapelo_202110_run2_hyslam/AprilTags/',
 #     'ext': '_tags.txt'
-#
 # }
-# mode = 'unique_id'
 
-def load_mesh():
-    mesh = trimesh.load_mesh(mesh_file)
+#mode = 'unique_id'
+
+def load_mesh(mesh_filename):
+    mesh = trimesh.load_mesh(mesh_filename)
     return mesh
 
-def load_agisoft_data():
-    tree = ET.parse(camera_file)
+def load_agisoft_data(camera_filename):
+    tree = ET.parse(camera_filename)
     root = tree.getroot()
     version = root.attrib['version']
-    print(version)
 
     chunks = root.findall('chunk')
     cameras = {}
@@ -62,9 +63,9 @@ def load_agisoft_data():
 
 if __name__ == '__main__':
 
-    cameras, frames = load_agisoft_data()
+    cameras, frames = load_agisoft_data(camera_file)
 
-    mesh = load_mesh()
+    mesh = load_mesh(mesh_file)
     if mode == 'face_allocation':
         tree = AABBTree()
         tree = tree.from_mesh_faces(mesh)
