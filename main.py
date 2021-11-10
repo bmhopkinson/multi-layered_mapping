@@ -1,15 +1,17 @@
 import numpy as np
 import trimesh
 import xml.etree.ElementTree as ET
-from Camera import Frame, Camera
+from pycamgeom.camera import Camera
+from pycamgeom.frame import Frame
+from pycamgeom.aabbtree import AABBTree
 from MeshLabeler import MeshLabeler
-from aabbtree import AABBTree
+
 import time
 
 """ script to label marsh mesh from images - uses semantically segmented images for class (plant) labeling and raw
      images for coloring mesh for visualizations """
 
-MODE = 'Label_Interval'  #options 'Label_Interval', 'Label_All', 'Color_True', 'Color_Class'
+MODE = 'Label_All'  #options 'Label_Interval', 'Label_All', 'Color_True', 'Color_Class'
 
 mesh_file = './data/Sapelo_202106_run13/mesh_fine.ply'
 camera_file = './data/Sapelo_202106_run13/agisoft_cameras_Imaging.xml'
