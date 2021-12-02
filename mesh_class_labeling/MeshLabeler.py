@@ -67,7 +67,7 @@ class MeshLabeler():
         stop = len(self.frames)
         return self.from_frame_interval(start, stop)
 
-    def process_frames_prediction(self, frames, cover, args=[]):
+    def process_frames_prediction(self, frames, cover, args=None):
         """ takes in a set of frames associated with a mesh and returns the fractional cover for each mesh face
         visible in the frames. tried to break this down further but holding onto image sections for even a bit results in enormous memory usage
         this function is used as multiprocessing target"""
@@ -221,7 +221,7 @@ class MeshLabeler():
         stop = len(self.frames)
         return self.color_faces_from_images_interval(start, stop, image_folder, ext, color_modifier=color_mod)
 
-    def _color_faces_from_images(self, frames, face_colors, args=[]):
+    def _color_faces_from_images(self, frames, face_colors, args):
         """ colors (rgb) each visible face of the mesh with the average color in associated images whose poses
         are provided in frame and actual image are in image_folder - can either be rgb images or semantic segmentation.
         primarily for visualization. target for multiprocessing """

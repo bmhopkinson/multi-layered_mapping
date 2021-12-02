@@ -1,3 +1,5 @@
+import os.path
+
 import numpy as np
 import trimesh
 import xml.etree.ElementTree as ET
@@ -11,13 +13,17 @@ import time
 """ script to label marsh mesh from images - uses semantically segmented images for class (plant) labeling and raw
      images for coloring mesh for visualizations """
 
-MODE = 'Label_All'  #options 'Label_Interval', 'Label_All', 'Color_True', 'Color_Class'
+MODE = 'Label_Interval'  #options 'Label_Interval', 'Label_All', 'Color_True', 'Color_Class'
 
 mesh_file = './data/Sapelo_202106_run13/mesh_fine.ply'
 camera_file = './data/Sapelo_202106_run13/agisoft_cameras_Imaging.xml'
 image_classcolor_folder = './data/Sapelo_202106_run13/imaging_preds_20210909_model/'
 image_truecolor_folder ='./data/Sapelo_202106_run13/imaging/'
 image_folder = image_classcolor_folder
+
+outdir = './output'
+if not os.path.isdir(outdir):
+    os.mkdir(outdir)
 
 
 def load_mesh(mesh_filename):
@@ -81,10 +87,10 @@ if __name__ == '__main__':
     start = time.perf_counter()
     if MODE == 'Label_All':
         labels, mesh = labeler.from_all_frames()
-        labeler.write_labels(labels, 'fractional_cover_by_face.txt')
+        labeler.write_labels(labels, os.path.join(outdir, 'fractional_cover_by_face.txt'))
     elif MODE == 'Label_Interval':
         labels, mesh = labeler.from_frame_interval(0, 40)
-        labeler.write_labels(labels, 'fractional_cover_by_face.txt')
+        labeler.write_labels(labels, os.path.join(outdir, 'fractional_cover_by_face.txt'))
     elif MODE == 'Color_Class':
         mesh = labeler.color_faces_from_images_all(image_folder, '_pred.png', remove_color_other)
     elif MODE == 'Color_True':

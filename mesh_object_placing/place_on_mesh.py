@@ -1,4 +1,5 @@
 import trimesh
+import os
 import xml.etree.ElementTree as ET
 from pycamgeom.camera import Camera
 from pycamgeom.frame import Frame
@@ -33,6 +34,10 @@ mode = 'face_allocation'
 # }
 
 #mode = 'unique_id'
+
+outdir = './output'
+if not os.path.isdir(outdir):
+    os.mkdir(outdir)
 
 def load_mesh(mesh_filename):
     mesh = trimesh.load_mesh(mesh_filename)
@@ -77,7 +82,7 @@ if __name__ == '__main__':
                                obj_info=object_info, img_dir=image_dir)
 
     start = time.perf_counter()
-    object_placer.place_objects_from_frames(start=0, stop=100)
+    object_placer.place_objects_from_frames(start=0, stop=100, outfile=os.path.join(outdir, 'placed_objects.txt'))
     stop = time.perf_counter()
     dur = stop-start
     print('processing took : {} seconds'.format(dur))
