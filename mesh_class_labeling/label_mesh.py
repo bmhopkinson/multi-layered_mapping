@@ -6,6 +6,8 @@ import xml.etree.ElementTree as ET
 from pycamgeom.camera import Camera
 from pycamgeom.frame import Frame
 from pycamgeom.aabbtree import AABBTree
+import pycamgeom
+print(pycamgeom.__file__)
 from MeshLabeler import MeshLabeler
 
 import time
@@ -15,15 +17,15 @@ import time
 
 MODE = 'Label_Interval'  #options 'Label_Interval', 'Label_All', 'Color_True', 'Color_Class'
 
-# mesh_file = './data/Sapelo_202106_run13/mesh_fine.ply'
-# camera_file = './data/Sapelo_202106_run13/agisoft_cameras_Imaging.xml'
-# image_classcolor_folder = './data/Sapelo_202106_run13/imaging_preds_20210909_model/'
-# image_truecolor_folder ='./data/Sapelo_202106_run13/imaging/'
+mesh_file = './data/Sapelo_202106_run13/mesh_fine.ply'
+camera_file = './data/Sapelo_202106_run13/agisoft_cameras_Imaging.xml'
+image_classcolor_folder = './data/Sapelo_202106_run13/imaging_preds_20210909_model/'
+image_truecolor_folder ='./data/Sapelo_202106_run13/imaging/'
 
-mesh_file = './data/mesh.ply'
-camera_file = './data/agisoft_cameras_Imaging.xml'
-image_classcolor_folder = './data/imaging_preds/'
-image_truecolor_folder ='./data/imaging/'
+# mesh_file = './data/mesh.ply'
+# camera_file = './data/agisoft_cameras_Imaging.xml'
+# image_classcolor_folder = './data/imaging_preds/'
+# image_truecolor_folder ='./data/imaging/'
 
 image_folder = image_classcolor_folder
 
@@ -108,6 +110,6 @@ if __name__ == '__main__':
     stop = time.perf_counter()
     dur = stop-start
     print('processing took : {} seconds'.format(dur))
-    #mesh.show()
+    mesh.show()
 
     print('done')

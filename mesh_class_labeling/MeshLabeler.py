@@ -5,6 +5,7 @@ import re
 import trimesh
 import utils.helpers as h
 import utils.image_processing as ip
+#from pycamgeom.projector import Projector
 
 parse_cover_key = re.compile('(.*)_(.*)')
 
@@ -45,6 +46,8 @@ class MeshLabeler():
             self.vertices = mesh.vertices.view(np.ndarray)
             self.faces = mesh.faces.view(np.ndarray)
 
+        #self.projector = Projector(self.faces, self.vertices, mesh, tree, descend=4)
+
     def from_frame_interval(self, start=0, stop=0):
         """ determines fractional on faces visible in frames specified in interval. accelerated with multiprocessing"""
         frames_selection = self.frames[start:stop]
@@ -75,6 +78,7 @@ class MeshLabeler():
             print('working on {}, id: {}'.format(frame.label, frame.frame_id))
             hits, aabbs = frame.project_from_tree(self.tree, descend=DESCEND)
             hits_refined = self.refine_hits(frame, hits)
+           # hits_refined = self.projector.find_visible_faces(frame)
 
             img_pred_path = self.img_dir + frame.label + "_pred.png"
             img_pred = cv2.imread(img_pred_path)
