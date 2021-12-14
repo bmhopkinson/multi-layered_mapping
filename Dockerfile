@@ -14,7 +14,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends git wget unzip bzip2 sudo build-essential ca-certificates && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-
+#
 ## Install miniconda
 ENV PATH $CONDA_DIR/bin:$PATH
 RUN wget --quiet https://repo.continuum.io/miniconda/Miniconda$CONDA_PYTHON_VERSION-latest-Linux-x86_64.sh -O /tmp/miniconda.sh && \
@@ -22,7 +22,7 @@ RUN wget --quiet https://repo.continuum.io/miniconda/Miniconda$CONDA_PYTHON_VERS
     /bin/bash /tmp/miniconda.sh -b -p $CONDA_DIR && \
     rm -rf /tmp/*
 
-# Create the user
+#Create the user
 RUN useradd --create-home -s /bin/bash --no-user-group -u $USERID $USERNAME && \
     chown $USERNAME $CONDA_DIR -R && \
     adduser $USERNAME sudo && \
@@ -34,8 +34,8 @@ WORKDIR /home/$USERNAME
 RUN conda install -y mamba -c conda-forge
 
 #COPY ./environment.yml .
-COPY . .
-RUN sudo chown $USERNAME . -R
+COPY --chown=docker:docker . .
+#RUN sudo chown $USERNAME . -R
 RUN mamba env update --file ./environment.yml &&\
     conda clean -tipy
 
