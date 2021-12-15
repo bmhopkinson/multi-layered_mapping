@@ -40,6 +40,11 @@ class Frame:
         _frame.P = np.matmul(_frame.camera.K, _frame.Tcw[0:3, :])
         return _frame
 
+    def set_pose(self, Twc): #set pose from Twc - camera to world transformation
+        self.Twc = np.copy(Twc)
+        self.Tcw = np.linalg.inv(Twc)
+        self.P = np.matmul(self.camera.K, self.Tcw[0:3, :])
+
     def project(self, x_world):
         """ project point in world coordinates into image.
         the point will be converted to homogenous coordinates if it's not already; cooperates with camera

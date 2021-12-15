@@ -6,8 +6,6 @@ import xml.etree.ElementTree as ET
 from pycamgeom.camera import Camera
 from pycamgeom.frame import Frame
 from pycamgeom.aabbtree import AABBTree
-import pycamgeom
-print(pycamgeom.__file__)
 from MeshLabeler import MeshLabeler
 
 import time
@@ -27,7 +25,10 @@ image_truecolor_folder ='./data/Sapelo_202106_run13/imaging/'
 # image_classcolor_folder = './data/imaging_preds/'
 # image_truecolor_folder ='./data/imaging/'
 
-image_folder = image_classcolor_folder
+if MODE in ['Label_Interval', 'Label_All', 'Color_Class']:
+    image_folder = image_classcolor_folder
+elif MODE =='Color_True':
+    image_folder = image_truecolor_folder
 
 outdir = './output'
 if not os.path.isdir(outdir):
@@ -42,7 +43,7 @@ def load_agisoft_data(camera_filename):
     tree = ET.parse(camera_filename)
     root = tree.getroot()
     version = root.attrib['version']
-    print(version)
+    #print(version)
 
     chunks = root.findall('chunk')
     cameras = {}

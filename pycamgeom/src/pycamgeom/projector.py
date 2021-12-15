@@ -4,7 +4,6 @@ import trimesh
 class Projector():
 
     def __init__(self, faces, vertices, mesh, tree, descend=4):
-        print('creating Projector()')
         self.faces = faces
         self.vertices = vertices
         self.mesh = mesh

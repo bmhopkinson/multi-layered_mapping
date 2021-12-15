@@ -10,13 +10,13 @@ import time
 
 """ script to place objects detected in images on mesh  """
 
-mesh_file = './data/Sapelo_202106_run10/mesh.ply'
-camera_file = './data/Sapelo_202106_run10/agisoft_cameras_Imaging.xml'
+mesh_file = './data/Sapelo_202106_run13/mesh_fine.ply'
+camera_file = './data/Sapelo_202106_run13/agisoft_cameras_Imaging.xml'
 
-image_dir = './data/Sapelo_202106_run10/imaging/'
+image_dir = './data/Sapelo_202106_run13/imaging/'
 
 object_info = {
-    'dir': './data/Sapelo_202106_run10/snail_preds/',
+    'dir': './data/Sapelo_202106_run13/snail_preds/',
     'ext': '_preds.txt'
 
 }
@@ -82,7 +82,7 @@ if __name__ == '__main__':
                                obj_info=object_info, img_dir=image_dir)
 
     start = time.perf_counter()
-    object_placer.place_objects_from_frames(start=0, stop=100, outfile=os.path.join(outdir, 'placed_objects.txt'))
+    object_placer.place_objects_from_frames(start=0, stop=20, outfile=os.path.join(outdir, 'placed_objects.txt'))
     stop = time.perf_counter()
     dur = stop-start
     print('processing took : {} seconds'.format(dur))

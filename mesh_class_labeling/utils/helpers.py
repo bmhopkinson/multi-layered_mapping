@@ -17,9 +17,15 @@ def run_concurrent(context, func, data_in, args=None, n_workers=2):
         func(chunk_of_data_in, results_dict, optional_args)
         """
 
-    if context.manager is None:
+    if context is None:
+        manager = mp.Manager()
+    elif context.manager is None:
         context.manager = mp.Manager()
-    results = context.manager.dict()    # results dictionary - note b/c of python multiprocessing constraints only option is
+        manager = context.manager
+    else:
+        manager = context.manager
+
+    results = manager.dict()    # results dictionary - note b/c of python multiprocessing constraints only option is
                                         # to dump data into this dictionary, different processes aren't notified when it is modified
     jobs = []
     for chunk in chunks(data_in, math.ceil(len(data_in) / n_workers)):
