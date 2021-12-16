@@ -1,5 +1,4 @@
 import numpy as np
-import trimesh
 import pandas
 import sys
 import copy
@@ -32,7 +31,6 @@ class MeshPlacer():
         self.frames = frames
         self.frame_from_id_dict = self.generate_frame_from_id_dict(frames)
         self.mesh = copy.deepcopy(mesh)
-        self.ray_mesh_intersector = trimesh.ray.ray_pyembree.RayMeshIntersector(self.mesh)  #the embree raytracer is much faster but isn't automatically installed by trimesh
         self.vertices = []
         self.faces = []
         self.tree = tree            # aabb tree
@@ -248,25 +246,6 @@ class MeshPlacer():
 
             for loc, ray_id in zip(locations, ray_idx):
                 self.objects_world.append({'x_world': loc, 'type': ray_to_obj[ray_id]['type'], 'unique_id': ray_to_obj[ray_id]['unique_id']})
-
-
-   #          cam_center = frame.Twc[0:3, 3].reshape((1, 3))
-   #          ray_orgs = np.empty((0, 3))
-   #          ray_dirs = np.empty((0, 3))
-   #          ray_to_obj = []
-   #
-   #          for obj in objects_to_place[frame_id]:
-   # #             for obj in objects_to_place[frame_id][face_id]:
-   #                  ray_to_obj.append(obj)
-   #                  img_xy = obj['img_xy']
-   #                  pt_world = frame.backproject(img_xy[0], img_xy[1], 0.05)
-   #                  #pdb.set_trace()
-   #                  ray_dir = pt_world.reshape((1, 3)) - cam_center
-   #                  ray_dirs = np.append(ray_dirs, ray_dir, axis=0)
-   #                  ray_orgs = np.append(ray_orgs, cam_center, axis=0)
-   #
-   #          locations, ray_idx, face_ids = self.ray_mesh_intersector.intersects_location(ray_orgs, ray_dirs, multiple_hits=False)
-
 
 
     def merge_duplicate_objects(self):

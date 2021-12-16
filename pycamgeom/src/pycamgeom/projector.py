@@ -9,7 +9,7 @@ class Projector():
         self.mesh = mesh
         self.tree = tree
         self.descend = descend
-        self.ray_mesh_intersector = trimesh.ray.ray_pyembree.RayMeshIntersector(self.mesh)
+        self.ray_mesh_intersector = trimesh.ray.ray_pyembree.RayMeshIntersector(self.mesh)  #the embree raytracer is much faster but isn't automatically installed by trimesh
 
     def find_visible_faces(self, frame):
         hits, aabbs = frame.project_from_tree(self.tree, descend=self.descend)
