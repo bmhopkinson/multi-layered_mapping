@@ -82,3 +82,20 @@ class Projector():
                 face_ids.pop(face_id)
 
         return face_ids
+
+    def backproject_imgpts_to_mesh(self, frame, imgpts):
+        ''' backprojects image points (imgpts: [row, col]) in frame onto mesh held in Projector'''
+
+        cam_center = frame.Twc[0:3, 3].reshape((1, 3))
+        ray_orgs = np.empty((0, 3))
+        ray_dirs = np.empty((0, 3))
+
+        for pt in imgpts:
+            pt_world = frame.backproject(pt[0], pt[1], 0.05)  #0.05 hardcoded is bad - estimate scale of frame to mesh distance and use tiny fraction of that scale
+            ray_dir = pt_world.reshape((1, 3)) - cam_center
+            ray_dirs = np.append(ray_dirs, ray_dir, axis=0)
+            ray_orgs = np.append(ray_orgs, cam_center, axis=0)
+
+        locations, ray_idx, face_ids = self.ray_mesh_intersector.intersects_location(ray_orgs, ray_dirs,
+                                                                                     multiple_hits=False)
+        return locations, ray_idx, face_ids
