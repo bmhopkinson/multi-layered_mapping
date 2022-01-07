@@ -39,7 +39,7 @@ class MeshPlacer():
         self.mode = mode            # approach to avoiding duplicate objects
         self.n_workers = n_workers
         self.manager = None   # data structure manager for multiprocessing operations
-        self.run_function = h.run_singlethreaded
+        self.run_function = h.run_concurrent
 
         if self.mesh is not None:
             self.vertices = mesh.vertices.view(np.ndarray)
@@ -276,10 +276,10 @@ class MeshPlacer():
     def write_placed_objects(self, out_path):
         fout = open(out_path, 'w')
         for obj in self.objects_world:
-            fout.write('{:d}\t'.format(obj['type']))
+            fout.write('{:d}'.format(obj['type']))
 
             if obj['unique_id'] is not None:
-                fout.write('{:d}'.format(obj['unique_id']))
+                fout.write('\t{:d}'.format(obj['unique_id']))
 
             for x in obj['x_world']:
                 fout.write('\t{:f}'.format(x))
